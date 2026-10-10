@@ -134,7 +134,7 @@ def verify_scaling(client, backend, env):
                     dict(width=width,height=height,deviceScaleFactor=ratio,mobile=False))
         if backend == 'kasm':
             client.evaluate("(()=>{const el=document.getElementById('noVNC_setting_enable_hidpi');"
-                            f"el.checked={str(native).lower()};el.dispatchEvent(new Event('change'));" + "})()")
+                            f"if(el.checked!=={str(native).lower()}){{el.checked={str(native).lower()};el.dispatchEvent(new Event('change'));}}" + "})()")
         # Kasm rounds the CSS container to even pixels; noVNC keeps odd sizes.
         logical = [size // 2 * 2 if backend == 'kasm' else size for size in (width,height)]
         expected = [int(size * ratio) if native else size for size in logical]
