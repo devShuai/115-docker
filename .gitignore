@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+data/
+backups/
+*.htpasswd
+.DS_Store
+__pycache__/
+*.pyc

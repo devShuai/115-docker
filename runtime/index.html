@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>连接 115 浏览器</title>
+</head>
+<body>
+  <p>正在连接 115 浏览器……</p>
+  <p><a href="vnc.html?resize=remote&amp;autoconnect=1&amp;reconnect=1&amp;reconnect_delay=2000">打开浏览器</a></p>
+  <script>
+    // Explicit URL settings override an old resize preference in noVNC storage.
+    // The standard noVNC UI prompts for the password; credentials stay out of URLs.
+    const target = new URL('vnc.html', window.location.href);
+    target.searchParams.set('resize', 'remote');
+    target.searchParams.set('autoconnect', '1');
+    target.searchParams.set('reconnect', '1');
+    target.searchParams.set('reconnect_delay', '2000');
+    window.location.replace(target.href);
+  </script>
+</body>
+</html>

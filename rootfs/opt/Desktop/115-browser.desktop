@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=115 浏览器
+Comment=打开 115 浏览器
+Exec=/opt/115/115.sh
+Icon=/usr/share/icons/hicolor/scalable/apps/115-browser.svg
+Terminal=false
+Categories=Network;WebBrowser;

@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "115 Session Helper",
+  "version": "1.0.0",
+  "description": "Apply the session cookies explicitly configured by the owner.",
+  "permissions": ["cookies"],
+  "host_permissions": ["https://115.com/*", "https://*.115.com/*", "https://anxia.com/*", "https://*.anxia.com/*"],
+  "background": {"service_worker": "worker.js"}
+}

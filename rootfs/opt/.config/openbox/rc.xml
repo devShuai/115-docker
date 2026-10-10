@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <focus><focusNew>yes</focusNew><followMouse>no</followMouse></focus>
+  <placement><policy>Smart</policy><center>yes</center><monitor>Primary</monitor></placement>
+  <theme>
+    <name>115Dark</name><titleLayout>NLIMC</titleLayout><keepBorder>yes</keepBorder>
+    <font place="ActiveWindow"><name>Noto Sans CJK SC</name><size>10</size><weight>Bold</weight></font>
+    <font place="InactiveWindow"><name>Noto Sans CJK SC</name><size>10</size></font>
+    <font place="MenuItem"><name>Noto Sans CJK SC</name><size>10</size></font>
+    <font place="MenuHeader"><name>Noto Sans CJK SC</name><size>10</size><weight>Bold</weight></font>
+  </theme>
+  <desktops><number>1</number><names><name>115</name></names></desktops>
+  <resize><drawContents>yes</drawContents><popupShow>Never</popupShow></resize>
+  <keyboard>
+    <keybind key="A-F4"><action name="Close"/></keybind>
+    <keybind key="A-Tab"><action name="NextWindow"/></keybind>
+    <keybind key="A-S-Tab"><action name="PreviousWindow"/></keybind>
+    <keybind key="W-e"><action name="Execute"><command>pcmanfm /opt/Downloads</command></action></keybind>
+    <keybind key="W-b"><action name="Execute"><command>/opt/115/115.sh</command></action></keybind>
+    <keybind key="W-d"><action name="ToggleShowDesktop"/></keybind>
+  </keyboard>
+  <mouse>
+    <context name="Titlebar">
+      <mousebind button="Left" action="Press"><action name="Focus"/><action name="Raise"/></mousebind>
+      <mousebind button="Left" action="Drag"><action name="Move"/></mousebind>
+      <mousebind button="Left" action="DoubleClick"><action name="ToggleMaximize"/></mousebind>
+      <mousebind button="Right" action="Press"><action name="ShowMenu"><menu>client-menu</menu></action></mousebind>
+    </context>
+    <context name="Client"><mousebind button="Left" action="Press"><action name="Focus"/><action name="Raise"/></mousebind></context>
+    <context name="Frame">
+      <mousebind button="A-Left" action="Drag"><action name="Move"/></mousebind>
+      <mousebind button="A-Right" action="Drag"><action name="Resize"/></mousebind>
+    </context>
+    <context name="Close"><mousebind button="Left" action="Click"><action name="Close"/></mousebind></context>
+    <context name="Maximize"><mousebind button="Left" action="Click"><action name="ToggleMaximize"/></mousebind></context>
+    <context name="Iconify"><mousebind button="Left" action="Click"><action name="Iconify"/></mousebind></context>
+    <context name="Desktop"><mousebind button="Right" action="Press"><action name="ShowMenu"><menu>root-menu</menu></action></mousebind></context>
+  </mouse>
+  <menu><file>/opt/.config/openbox/menu.xml</file><showIcons>yes</showIcons></menu>
+</openbox_config>

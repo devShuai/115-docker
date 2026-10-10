@@ -1,0 +1,6 @@
+# Only use after logs show a seccomp-related compatibility failure.
+# Keep using both -f arguments for subsequent Compose commands.
+services:
+  browser115:
+    security_opt:
+      - seccomp:unconfined

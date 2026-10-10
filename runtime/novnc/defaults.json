@@ -1,0 +1,7 @@
+{
+  "autoconnect": true,
+  "reconnect": true,
+  "reconnect_delay": 2000,
+  "quality": 6,
+  "compression": 2
+}

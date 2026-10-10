@@ -1,0 +1,100 @@
+version: 53
+jobs:
+- name: validate
+  steps:
+  - type: CheckoutStep
+    name: checkout
+    cloneCredential:
+      type: DefaultCredential
+    withLfs: false
+    withSubmodules: false
+    condition: SUCCESSFUL
+  - type: CommandStep
+    name: verify archives and runtime
+    runInContainer: true
+    image: python:3.13-slim-trixie
+    interpreter:
+      type: PosixInterpreter
+      shell: bash
+      commands: |
+        set -euo pipefail
+        python3 scripts/vendor.py
+        bash -n runtime/start.sh runtime/115.sh scripts/ci-smoke.sh
+        python3 -m unittest discover -s tests -v
+        python3 -m py_compile scripts/ci-rfb.py
+    runAs: '0:0'
+    useTTY: false
+    condition: SUCCESSFUL
+  triggers:
+  - type: BranchUpdateTrigger
+    userMatch: anyone
+  - type: PullRequestUpdateTrigger
+  retryCondition: never
+  maxRetries: 0
+  retryDelay: 30
+  timeout: 900
+- name: publish-image
+  steps:
+  - type: CheckoutStep
+    name: checkout
+    cloneCredential:
+      type: DefaultCredential
+    withLfs: false
+    withSubmodules: false
+    condition: SUCCESSFUL
+  - type: BuildImageStep
+    name: build and push candidate
+    output:
+      type: RegistryOutput
+      tags: registry.devshuai.com/shuai-repo/115-docker:build-@build_number@ registry.devshuai.com/shuai-repo/115-docker:sha-@commit_hash@
+    registryLogins:
+    - registryUrl: registry.devshuai.com
+      userName: '@secret:registry-username@'
+      passwordSecret: registry-password
+    platforms: linux/amd64
+    moreOptions: --label org.opencontainers.image.source=https://one.devshuai.com/shuai-toys/115-docker --label org.opencontainers.image.revision=@commit_hash@
+    condition: SUCCESSFUL
+  - type: CommandStep
+    name: verify published desktop and remote resize
+    runInContainer: true
+    image: registry.devshuai.com/shuai-repo/115-docker:build-@build_number@
+    registryLogins:
+    - registryUrl: registry.devshuai.com
+      userName: '@secret:registry-username@'
+      passwordSecret: registry-password
+    interpreter:
+      type: PosixInterpreter
+      shell: bash
+      commands: bash scripts/ci-smoke.sh
+    runAs: '0:0'
+    useTTY: false
+    condition: SUCCESSFUL
+  - type: RunImagetoolsStep
+    name: promote verified image to latest
+    arguments: create -t registry.devshuai.com/shuai-repo/115-docker:latest registry.devshuai.com/shuai-repo/115-docker:build-@build_number@
+    registryLogins:
+    - registryUrl: registry.devshuai.com
+      userName: '@secret:registry-username@'
+      passwordSecret: registry-password
+    condition: SUCCESSFUL
+  - type: RunImagetoolsStep
+    name: inspect published manifest
+    arguments: inspect registry.devshuai.com/shuai-repo/115-docker:build-@build_number@
+    registryLogins:
+    - registryUrl: registry.devshuai.com
+      userName: '@secret:registry-username@'
+      passwordSecret: registry-password
+    condition: SUCCESSFUL
+  triggers:
+  - type: BranchUpdateTrigger
+    branches: main
+    userMatch: anyone
+  jobDependencies:
+  - jobName: validate
+    requireSuccessful: true
+    artifacts: ''
+  sequentialGroup: '@project_path@:registry-publish'
+  retryCondition: never
+  maxRetries: 0
+  retryDelay: 30
+  timeout: 3600

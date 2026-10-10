@@ -1,0 +1,29 @@
+{
+  "checked_on": "2026-10-10",
+  "assets": [
+    {
+      "name": "115browser-36.0.1-amd64.deb",
+      "url": "https://down.115.com/client/115pc/lin/115br_v36.0.1.deb",
+      "version": "36.0.1",
+      "component": "115Browser",
+      "sha256": "a26f84625b5c1ca1a7f6e2eb5a89327c49627fb7f04db1b71e27c48904b88d8b",
+      "size": 103731972
+    },
+    {
+      "name": "novnc-1.6.0.tar.gz",
+      "url": "https://codeload.github.com/novnc/noVNC/tar.gz/refs/tags/v1.6.0",
+      "version": "1.6.0",
+      "component": "noVNC",
+      "sha256": "5066103959ef4e9b10f37e5a148627360dd8414e4cf8a7db92bdbd022e728aaa",
+      "size": 724137
+    },
+    {
+      "name": "websockify-0.13.0.tar.gz",
+      "url": "https://codeload.github.com/novnc/websockify/tar.gz/refs/tags/v0.13.0",
+      "version": "0.13.0",
+      "component": "websockify",
+      "sha256": "b6413e364efd04f3c92ec8c17747e3c4adc20157c2ef1c5d019a26d944a46df8",
+      "size": 57826
+    }
+  ]
+}

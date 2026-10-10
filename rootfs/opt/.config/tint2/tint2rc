@@ -1,0 +1,66 @@
+# Opaque backgrounds work without a compositor.
+rounded = 0
+border_width = 1
+background_color = #151f2c 100
+border_color = #2b394c 100
+
+rounded = 6
+border_width = 0
+background_color = #223247 100
+
+rounded = 6
+border_width = 1
+background_color = #20423e 100
+border_color = #42bda7 100
+
+panel_items = LTSC
+panel_size = 100% 44
+panel_position = bottom center horizontal
+panel_margin = 0 0
+panel_padding = 12 6 10
+panel_background_id = 1
+panel_layer = top
+panel_dock = 0
+panel_monitor = primary
+strut_policy = follow_size
+autohide = 0
+wm_menu = 1
+
+launcher_padding = 2 0 6
+launcher_background_id = 0
+launcher_icon_size = 28
+launcher_icon_theme = Papirus-Dark
+launcher_item_app = /opt/Desktop/115-browser.desktop
+launcher_item_app = /opt/Desktop/downloads.desktop
+launcher_tooltip = 1
+
+taskbar_mode = single_desktop
+taskbar_padding = 0 0 5
+taskbar_background_id = 0
+task_text = 1
+task_icon = 1
+task_centered = 0
+task_maximum_size = 240 32
+task_padding = 9 3 5
+task_font = Noto Sans CJK SC 10
+task_font_color = #afbdce 100
+task_active_font_color = #eefbf7 100
+task_background_id = 2
+task_active_background_id = 3
+task_iconified_background_id = 2
+mouse_left = toggle_iconify
+mouse_middle = close
+mouse_right = none
+mouse_scroll_up = prev_task
+mouse_scroll_down = next_task
+
+systray_padding = 6 0 5
+systray_icon_size = 20
+systray_background_id = 0
+time1_format = %H:%M
+time1_font = Noto Sans CJK SC Bold 10
+time2_format = %m月%d日
+time2_font = Noto Sans CJK SC 8
+clock_font_color = #cddbe7 100
+clock_padding = 8 0
+clock_background_id = 0

@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+data
+backups
+tests
+.onedev-buildspec.yml
+scripts
+**/__pycache__
+**/*.pyc
+vendor/*.part
+.DS_Store

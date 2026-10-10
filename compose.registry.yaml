@@ -1,0 +1,5 @@
+# Merge with compose.yaml to deploy the image built by OneDev.
+services:
+  browser115:
+    image: ${IMAGE_115:-registry.devshuai.com/shuai-repo/115-docker:latest}
+    pull_policy: always
