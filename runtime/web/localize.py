@@ -13,7 +13,7 @@ def localize(html):
     if html.count("<head>") != 1 or '<html lang="en"' not in html:
         raise ValueError("Unexpected web client page layout")
     html = html.replace('<html lang="en"', '<html lang="zh-CN"', 1)
-    return html.replace("<head>", "<head>" + MARKER + '<script src="update-config.js" defer></script><script src="update-link.js" defer></script>', 1)
+    return html.replace("<head>", "<head>" + MARKER, 1)
 
 
 if __name__ == "__main__":

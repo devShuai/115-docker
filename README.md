@@ -300,34 +300,15 @@ docker compose -f compose.yaml -f compose.registry.yaml up -d --no-build
 
 群晖 Container Manager 直接创建的容器，在保存挂载、端口及环境设置后重新创建为 `latest`；保留旧容器但关闭其自动重启，避免端口和 profile 冲突。回滚将 IMAGE_115 改为旧的成功标签或 digest，重新 pull 和 up；仍需先保留当前 profile 并恢复与旧镜像配套的 profile 备份。
 
-### 网页检查、更新和回退
+### 群晖 Container Manager 更新
 
-工程内 `manager/` 提供独立的宿主机管理服务，使用 Python 3 标准库和宿主机已有 Docker CLI，不需要 Watchtower 或外部服务。桌面容器不挂载 Docker socket；管理服务仅操作配置文件指定的一个容器和镜像地址，网页不能传入任意 Docker 命令、路径或镜像。管理页面使用当前桌面的 `REMOTE_USER` / `PASSWORD` 登录，登录有效期 8 小时；接口有来源检查、会话和 CSRF 验证。Harbor 密码继续由宿主机 root 的 Docker 登录配置管理。
+群晖 NAS 使用 Container Manager 自带的镜像管理和更新检查。正式容器使用 `registry.devshuai.com/shuai-repo/115-docker:latest`；仓库 `latest` 仅在流水线验收成功后更新，同时保留成功构建编号和提交标签供回退。更新服务无需在 NAS 上另外安装。
 
-群晖 DSM 上安装（需已启用 Container Manager、Python 3 及 root Docker 仓库登录）：
+检查镜像更新并下载后，仍需重新创建或更新正式容器才能运行新镜像。操作前停止容器并备份浏览器 profile，保留旧容器和旧镜像，关闭旧容器的自动重启。新容器沿用原有端口、环境变量、profile 和下载目录挂载；同一个 profile 不要同时启动两个容器。
 
-```bash
-cp manager/config.example.json manager-config.json
-# 修改 bind、allowed_hosts、desktop_url、public_url 为 NAS 的内网地址。
-# state_dir 必须与 /etc/115 对应的宿主机数据目录位于同一文件系统。
-sudo sh manager/install-synology.sh /volume2/docker/115-docker-manager manager-config.json
-```
+回退时停止新容器并另存当前 profile，再恢复旧版配套的 profile 和旧容器。下载文件保留在原目录。独立网页管理服务已移除；之前生成的容器和数据备份可继续保留用于人工回退。
 
-配置默认只监听回环地址。若在局域网直接访问，将 `bind` 设置为 NAS 的内网 IP，并把该 IP 添加到 `allowed_hosts`。服务由 `115-docker-manager.service` 管理，安装器注册开机启动；日志使用 `sudo journalctl -u 115-docker-manager.service` 查看。域名反向代理时添加域名到 `allowed_hosts`、保留 Host 请求头、使用 HTTPS，并设置 `secure_cookie: true`。配置文件和备份仅 root 可读，网页不会显示密码或完整容器环境变量。
-
-管理页面默认端口 `11502`。桌面 `.env` 中设置 `UPDATE_URL=http://<NAS-IP>:11502/`，或在管理服务中设置 `public_url`，后者会在下一次更新时写入新容器。新版 KasmVNC 和原 noVNC 页面右下角会出现“更新管理”入口；管理员也可直接打开管理地址。
-
-网页操作流程：
-
-1. **检查更新**：比较正式容器与 `latest`，不下载镜像层。
-2. **更新到最新版**：先拉取镜像；若 latest 自检查以来改变，拒绝更新并要求重新检查。随后停止桌面，复制完整浏览器 profile，保留旧容器并关闭其自动重启，以相同端口、挂载和用户环境配置创建新容器。只有健康检查成功才记录为可回退版本；失败自动恢复旧容器和配套 profile。
-3. **回退到此版本**：恢复所选旧容器和升级前 profile，同时保留当前容器及当前 profile 副本。回退版本未通过健康检查时，尝试恢复回退前的版本与数据。多次更新需按最新到最旧的顺序逐次回退。
-
-管理页在桌面替换期间保持运行，显示进度；群晖 Container Manager 的正式容器和保留容器记录也会同步。下载目录始终保留在原位置，不复制大型下载文件、不撤销升级后的文件变更。旧容器、旧镜像及浏览器数据备份不会自动清理；更新前检查剩余空间。管理服务异常退出后，未完成的记录标为“操作中断”，可使用回退按钮恢复；若正式容器被其他工具替换，会拒绝覆盖并提示人工检查。不要同时用 Compose、Container Manager 和网页执行更新。
-
-启动前会检查并清理失效的 X11 锁和 socket，支持同一容器重启和回退；检测到仍在运行的 X 服务时拒绝清理。回退到尚无此修复的旧版时，管理器只为保留容器补齐这一步，原启动脚本保存到备份目录；旧镜像和桌面实现保持原样。
-
-一般 Linux 主机也可运行 `sudo python3 manager/server.py --config <配置文件>`，使用宿主机进程管理器持久运行；将 `docker` 改为实际 CLI 路径，去掉 `synology_manager_dir`。当前更新器要求 `/etc/115` 使用独立的主机目录绑定挂载；命名卷或目录内额外挂载会拒绝更新，避免产生不完整的数据备份。
+启动前仍会检查并清理失效的 X11 锁和 socket，支持容器重启；检测到仍在运行的 X 服务时拒绝清理。
 
 ## 验证与兼容
 

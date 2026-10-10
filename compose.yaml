@@ -33,7 +33,6 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
       LANG: zh_CN.UTF-8
       LC_ALL: zh_CN.UTF-8
-      UPDATE_URL: ${UPDATE_URL:-}
       ENABLE_COOKIE_EXTENSION: ${ENABLE_COOKIE_EXTENSION:-false}
       COOKIE_CID: ${COOKIE_CID:-}
       COOKIE_SEID: ${COOKIE_SEID:-}
