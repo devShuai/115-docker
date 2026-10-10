@@ -220,8 +220,12 @@ def run_backend(backend):
             layout = fixture.evaluate('[innerWidth,innerHeight]')
             assert layout[0] == width and height/2 < layout[1] <= height, f'Maximized browser did not follow desktop: {layout}'
             client.pump(.5)
-            shot = client.call('Page.captureScreenshot', {'format':'png'})
-            (OUT/f'{backend}-{width}x{height}.png').write_bytes(base64.b64decode(shot['data']))
+            # Export the received framebuffer itself. This also works when a
+            # CI headless compositor cannot expose a Page screenshot surface.
+            shot = client.evaluate("Array.from(document.querySelectorAll('#noVNC_container canvas')).find(c=>c.offsetParent!==null&&c.width===innerWidth&&c.height===innerHeight).toDataURL('image/png')")
+            png = base64.b64decode(shot.split(',',1)[1])
+            assert png.startswith(b'\x89PNG\r\n\x1a\n') and len(png)>1024, 'Invalid desktop screenshot'
+            (OUT/f'{backend}-{width}x{height}.png').write_bytes(png)
             print(f'PASS: {backend} web canvas + actual X11 resize {width}x{height}', flush=True)
         # Startup home tabs may appear after the fixture's initial load.
         # Close them after resize verification so the benchmark has no web content.
