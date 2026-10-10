@@ -19,7 +19,7 @@ jobs:
       commands: |
         set -euo pipefail
         python3 scripts/vendor.py
-        bash -n runtime/start.sh runtime/115.sh scripts/ci-smoke.sh
+        bash -n runtime/*.sh scripts/ci-smoke.sh
         python3 -m unittest discover -s tests -v
         python3 -m py_compile scripts/ci-rfb.py
     runAs: '0:0'

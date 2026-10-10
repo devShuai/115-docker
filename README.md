@@ -15,6 +15,8 @@ compose.registry.yaml              拉取流水线发布的镜像
 .env.example                       环境变量模板
 .dockerignore                      排除敏感数据和运行目录
 runtime/
+  entrypoint.sh                    校验配置、准备运行目录后建立 D-Bus 会话
+  environment.sh                   入口和桌面共用的环境校验与目录准备
   start.sh                         启动与进程管理
   115.sh                           浏览器启动参数
   configure.py                     下载路径和 Cookie 配置
@@ -103,7 +105,7 @@ docker compose logs --tail=100 browser115
 
 也可使用 `docker compose up -d --build`。构建校验本地归档后安装 115，并解压 noVNC 与 Websockify，不查询上游 latest 应用镜像或动态版本。BuildKit 临时挂载 vendor，使 deb 安装包不留在最终镜像层中。
 
-启动时建立 D-Bus 会话、准备密码和浏览器配置，依次启动 TigerVNC、Openbox、PCManFM、tint2、Websockify 和可选的 115 浏览器。关键桌面服务退出会让容器退出，由 Docker 重启策略恢复；主动关闭浏览器会保留桌面。
+启动时先校验密码和环境参数、创建权限为 700 的 `/run/115`，再建立 D-Bus 会话、准备密码文件和浏览器配置，依次启动 TigerVNC、Openbox、PCManFM、tint2、Websockify 和可选的 115 浏览器。关键桌面服务退出会让容器退出，由 Docker 重启策略恢复；主动关闭浏览器会保留桌面。
 
 初始化设置默认下载目录为 `/opt/Downloads`，保留已有下载设置。首次登录后仍需在 115 中核对下载目录，并验证文件出现在宿主机。
 
@@ -242,7 +244,7 @@ docker compose -f compose.yaml -f compose.registry.yaml up -d --no-build
 ```bash
 python3 scripts/vendor.py
 python3 -m unittest discover -s tests -v
-bash -n runtime/start.sh runtime/115.sh
+bash -n runtime/*.sh scripts/ci-smoke.sh
 docker compose config --quiet
 docker compose build
 ```
@@ -258,6 +260,35 @@ docker compose -f compose.yaml -f compose.compat.yaml up -d --build
 ```
 
 后续维护携带相同的 -f 参数。该配置移除系统调用过滤，降低隔离；一般黑屏不通过 privileged 或 host 网络解决。[Docker seccomp 文档](https://docs.docker.com/engine/security/seccomp/)
+
+## 群晖启动报错处理
+
+在 Container Manager 界面直接创建容器时，环境变量名是 **`PASSWORD`**，值为恰好 8 位英文字母或数字。`VNC_PASSWORD` 是本项目 Compose 使用的 `.env` 变量，Compose 会将其映射为容器的 `PASSWORD`。两者不能在直接创建容器时混用。修改环境变量后重新创建容器，并继续挂载原来的 `/etc/115` 和 `/opt/Downloads` 数据目录；仅重新启动旧容器不会更新其环境配置。
+
+`XDG_RUNTIME_DIR "/run/115" not available` 是旧镜像的启动顺序问题；使用包含 `runtime/entrypoint.sh` 修复的镜像。无需把 `/run/115` 映射到 NAS 持久目录，也不要在 Container Manager 中覆盖镜像的启动命令。
+
+`Cannot set up inotify ... No space left on device` 表示添加文件监听失败，通常为同一宿主机用户的 inotify 配额耗尽，也可能是内核资源不足，不能仅据此判定磁盘已满。[Linux inotify 错误说明](https://man7.org/linux/man-pages/man2/inotify_add_watch.2.html)
+
+通过 SSH 登录 **群晖宿主机**，先检查磁盘、inode 与监听配额：
+
+```bash
+df -h / /volume1
+df -i / /volume1
+sysctl fs.inotify.max_user_watches fs.inotify.max_user_instances
+```
+
+关闭不必要的文件监听进程或容器；如果配额确实不足，可以先临时提高下限，同时保留已有的更高值：
+
+```bash
+watch_limit=$(sysctl -n fs.inotify.max_user_watches)
+instance_limit=$(sysctl -n fs.inotify.max_user_instances)
+[ "$watch_limit" -ge 524288 ] || watch_limit=524288
+[ "$instance_limit" -ge 1024 ] || instance_limit=1024
+sudo sysctl -w "fs.inotify.max_user_watches=$watch_limit" \
+  "fs.inotify.max_user_instances=$instance_limit"
+```
+
+这些是宿主机共享内核参数，不要写入 Compose 的容器 sysctls。临时设置在宿主机重启后可能失效；确认有效后，在 DSM 任务计划新增开机触发任务，以 root 执行上述检查并提高下限的脚本（任务中省略 sudo）。提高上限不会预先分配全部监听内存，实际内存使用随监听数量增加。若已经高于这些下限，继续排查大量监听的进程和内核内存情况，避免反复提高参数。
 
 ## 上线验收
 

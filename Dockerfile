@@ -49,4 +49,4 @@ RUN mkdir -p /etc/115 /opt/Downloads /opt/.cache /opt/.config \
 EXPOSE 1150
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD ["python3", "/opt/115/healthcheck.py"]
-ENTRYPOINT ["dbus-run-session", "--", "/opt/115/start.sh"]
+ENTRYPOINT ["/opt/115/entrypoint.sh"]

@@ -79,11 +79,41 @@ class ConfigurationTests(unittest.TestCase):
 
     def test_invalid_password_is_rejected_before_starting_services(self):
         for value in ("", "123456", "morethan8", "1234\n567"):
-            result = subprocess.run([BASH, str(ROOT / "runtime/start.sh")],
-                                    env={**os.environ, "PASSWORD": value},
-                                    capture_output=True, text=True, timeout=5)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("exactly 8", result.stderr)
+            for script in ("start.sh", "entrypoint.sh"):
+                result = subprocess.run([BASH, str(ROOT / "runtime" / script)],
+                                        env={**os.environ, **self.environment, "PASSWORD": value},
+                                        capture_output=True, text=True, timeout=5)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("exactly 8", result.stderr)
+                self.assertNotIn("dbus", result.stderr)
+                self.assertFalse(self.run.exists())
+
+    def test_entrypoint_prepares_private_runtime_directory_before_dbus(self):
+        mock_bin = self.directory / "bin"
+        mock_bin.mkdir()
+        runner = mock_bin / "dbus-run-session"
+        runner.write_text(
+            "#!" + sys.executable + "\n"
+            "import json, os, pathlib, sys\n"
+            "p = pathlib.Path(os.environ['XDG_RUNTIME_DIR'])\n"
+            "print(json.dumps({'mode': p.stat().st_mode & 0o777, 'args': sys.argv[1:],\n"
+            "'profile': pathlib.Path(os.environ['PROFILE_DIR_IN_CONTAINER']).is_dir()}))\n"
+        )
+        runner.chmod(0o755)
+        environment = {**os.environ, **self.environment, "PASSWORD": "Check123",
+                       "PATH": str(mock_bin) + os.pathsep + os.environ["PATH"]}
+        result = subprocess.run([BASH, str(ROOT / "runtime/entrypoint.sh")],
+                                env=environment, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        content = json.loads(result.stdout)
+        self.assertEqual(content["mode"], 0o700)
+        self.assertTrue(content["profile"])
+        self.assertEqual(content["args"], ["--", str(ROOT / "runtime/start.sh")])
+        # Existing runtime directories must also have their permissions corrected.
+        self.run.chmod(0o755)
+        result = subprocess.run([BASH, str(ROOT / "runtime/entrypoint.sh")],
+                                env=environment, capture_output=True, text=True, timeout=5)
+        self.assertEqual(json.loads(result.stdout)["mode"], 0o700)
 
     def test_vendored_novnc_supports_mandatory_resize(self):
         mandatory = json.loads((ROOT / "runtime/novnc/mandatory.json").read_text())
