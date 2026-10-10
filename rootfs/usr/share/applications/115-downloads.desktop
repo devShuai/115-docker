@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=下载目录
+Comment=浏览持久化下载文件
+Exec=thunar /opt/Downloads
+Icon=folder-download
+Terminal=false
+Categories=System;FileManager;

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The web client drives the resolution. Store no display profile and show no
+     "new display" dialog, so xfsettingsd never resizes the desktop itself. -->
+<channel name="displays" version="1.0">
+  <property name="Notify" type="int" value="0"/>
+  <property name="AutoEnableProfiles" type="bool" value="false"/>
+</channel>

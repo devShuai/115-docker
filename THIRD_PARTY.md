@@ -11,8 +11,11 @@
 | Websockify | 0.13.0 | [Websockify](https://github.com/novnc/websockify/tree/v0.13.0)，LGPL 3.0，具体以归档内许可证文件为准 |
 | KasmVNC | 1.5.0 | [KasmVNC](https://github.com/kasmtech/KasmVNC/tree/v1.5.0)，GPL 2.0；官方 trixie amd64 安装包和对应完整服务端源码归档均在 vendor |
 | KasmVNC 网页客户端 | 475ecfa5356579ef222983c7ce4619a7576a3bce | [Kasm noVNC](https://github.com/kasmtech/noVNC/tree/475ecfa5356579ef222983c7ce4619a7576a3bce)，以归档内 LICENSE 为准；这是 KasmVNC 1.5.0 固定的 kasmweb 子模块提交 |
-| Debian 和桌面系统包 | manifest 中逐包锁定版本 | [Debian](https://www.debian.org/)，283 个传递依赖 deb 已保存在 vendor/debian，各组件许可保存在镜像的 `/usr/share/doc/组件/copyright` |
+| Debian 和桌面系统包 | manifest 中逐包锁定版本 | [Debian](https://www.debian.org/)，290 个传递依赖 deb 已保存在 vendor/debian，各组件许可保存在镜像的 `/usr/share/doc/组件/copyright` |
+| Xfce 桌面 | 4.20（Debian trixie） | [Xfce](https://www.xfce.org/)，GPL 2.0 及 LGPL，以系统包版权信息为准 |
+| Arc 主题 | 20221218（Debian trixie） | [Arc theme](https://github.com/jnsh/arc-theme)，GPL 3.0，以系统包版权信息为准 |
 | Papirus 图标 | Debian 软件源版本 | [Papirus](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)，GPL 3.0，以系统包版权信息为准 |
+| Noto Color Emoji | 2.051（Debian trixie） | [Noto Emoji](https://github.com/googlefonts/noto-emoji)，SIL OFL 1.1，以系统包版权信息为准 |
 
 `runtime/kasmvnc/zh_CN.json` 由上述 KasmVNC 网页客户端的 `app/locale/zh_CN.json` 校订和补全而来，`runtime/kasmvnc/disconnected.html` 改写自同一客户端的断开页，两者沿用该客户端归档内 LICENSE 的许可。
 

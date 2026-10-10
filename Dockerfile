@@ -8,6 +8,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=zh_CN.UTF-8 \
     LANGUAGE=zh_CN:zh \
     TZ=Asia/Shanghai \
+    XDG_CURRENT_DESKTOP=XFCE \
+    XDG_MENU_PREFIX=xfce- \
     XDG_CONFIG_HOME=/opt/.config \
     XDG_CACHE_HOME=/opt/.cache \
     XDG_RUNTIME_DIR=/run/115 \
@@ -56,7 +58,11 @@ RUN mkdir -p /etc/115 /opt/Downloads /opt/.cache /opt/.config \
     && test -x /usr/bin/Xkasmvnc \
     && test -f /usr/share/kasmvnc/www/vnc.html \
     && test -f /usr/local/share/noVNC/vnc.html \
-    && test -f /usr/share/locale/zh_CN/LC_MESSAGES/gtk30.mo
+    && test -f /usr/share/locale/zh_CN/LC_MESSAGES/gtk30.mo \
+    && test -f /usr/share/locale/zh_CN/LC_MESSAGES/xfce4-panel.mo \
+    && test -x /usr/bin/xfwm4 \
+    && test -f /usr/share/themes/Arc-Dark/xfwm4/themerc \
+    && test -f /usr/share/applications/115Browser.desktop
 
 EXPOSE 1150
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

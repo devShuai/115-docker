@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<openbox_menu xmlns="http://openbox.org/3.4/menu">
-  <menu id="root-menu" label="115 桌面">
-    <item label="115 浏览器"><action name="Execute"><command>/opt/115/115.sh</command></action></item>
-    <item label="下载目录"><action name="Execute"><command>pcmanfm /opt/Downloads</command></action></item>
-    <separator/>
-    <item label="显示桌面"><action name="ToggleShowDesktop"/></item>
-  </menu>
-</openbox_menu>

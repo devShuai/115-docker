@@ -66,6 +66,14 @@
       "size": 504356
     },
     {
+      "name": "debian/arc-theme_20221218-1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/a/arc-theme/arc-theme_20221218-1_all.deb",
+      "version": "20221218-1",
+      "component": "Debian runtime dependency",
+      "sha256": "75f14c832bd7c6e3b0c210db1e84d278ba75ac359a423488f61df9877ac4903e",
+      "size": 371944
+    },
+    {
       "name": "debian/at-spi2-common_2.56.2-1+deb13u2_all.deb",
       "url": "https://deb.debian.org/debian/pool/main/a/at-spi2-core/at-spi2-common_2.56.2-1%2bdeb13u2_all.deb",
       "version": "2.56.2-1+deb13u2",
@@ -162,6 +170,22 @@
       "size": 32364
     },
     {
+      "name": "debian/desktop-file-utils_0.28-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/d/desktop-file-utils/desktop-file-utils_0.28-1_amd64.deb",
+      "version": "0.28-1",
+      "component": "Debian runtime dependency",
+      "sha256": "a5c6e009dd7ad323c41b9e3fd15168877288b0a8c9e87469e51682321f4241ac",
+      "size": 91660
+    },
+    {
+      "name": "debian/exo-utils_4.20.0-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/e/exo/exo-utils_4.20.0-1_amd64.deb",
+      "version": "4.20.0-1",
+      "component": "Debian runtime dependency",
+      "sha256": "9f31b627a11321b41bd6b1fa47bdab991a78ec2b567bfb3ed0064eda10bfda8a",
+      "size": 58112
+    },
+    {
       "name": "debian/fontconfig-config_2.15.0-2.3_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/f/fontconfig/fontconfig-config_2.15.0-2.3_amd64.deb",
       "version": "2.15.0-2.3",
@@ -194,12 +218,12 @@
       "size": 56674044
     },
     {
-      "name": "debian/fonts-urw-base35_20200910-8_all.deb",
-      "url": "https://deb.debian.org/debian/pool/main/f/fonts-urw-base35/fonts-urw-base35_20200910-8_all.deb",
-      "version": "20200910-8",
+      "name": "debian/fonts-noto-color-emoji_2.051-0+deb13u1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/f/fonts-noto-color-emoji/fonts-noto-color-emoji_2.051-0+deb13u1_all.deb",
+      "version": "2.051-0+deb13u1",
       "component": "Debian runtime dependency",
-      "sha256": "4ac978a355a84024ec94d0249d411de9eb50c89c8e39d292e303e61d1afa3f84",
-      "size": 10802992
+      "sha256": "03141cd51c0e9ff8ad858fcf2d8234f8a00ae4d7a0872df43a71519359c54e8c",
+      "size": 10110428
     },
     {
       "name": "debian/gnome-themes-extra-data_3.28-4_all.deb",
@@ -224,6 +248,14 @@
       "component": "Debian runtime dependency",
       "sha256": "88378a48ac07d253fb9bf0503dfbfbee2037ed9cd83eeff1df398801ab183125",
       "size": 52700
+    },
+    {
+      "name": "debian/gtk2-engines-murrine_0.98.2-4+b1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/g/gtk2-engines-murrine/gtk2-engines-murrine_0.98.2-4+b1_amd64.deb",
+      "version": "0.98.2-4+b1",
+      "component": "Debian runtime dependency",
+      "sha256": "e3acdbaeff8aa8793e401fc97397b4b1e0729eda18bdb03edacd7884727bab5c",
+      "size": 98224
     },
     {
       "name": "debian/gtk2-engines-pixbuf_2.24.33-7_amd64.deb",
@@ -522,12 +554,20 @@
       "size": 177904
     },
     {
-      "name": "debian/libdbus-glib-1-2_0.114-1_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/d/dbus-glib/libdbus-glib-1-2_0.114-1_amd64.deb",
-      "version": "0.114-1",
+      "name": "debian/libdbusmenu-glib4_18.10.20180917~bzr492+repack1-4_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libd/libdbusmenu/libdbusmenu-glib4_18.10.20180917~bzr492+repack1-4_amd64.deb",
+      "version": "18.10.20180917~bzr492+repack1-4",
       "component": "Debian runtime dependency",
-      "sha256": "65dd27004764b3531563d9073a1e3fe08d60978eead106bf5a483683d2756698",
-      "size": 61732
+      "sha256": "497128ea59ad99d26379bf1cff5a0897f6f0520e9cc0b5a44707676c6cf3f589",
+      "size": 40616
+    },
+    {
+      "name": "debian/libdbusmenu-gtk3-4_18.10.20180917~bzr492+repack1-4_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libd/libdbusmenu/libdbusmenu-gtk3-4_18.10.20180917~bzr492+repack1-4_amd64.deb",
+      "version": "18.10.20180917~bzr492+repack1-4",
+      "component": "Debian runtime dependency",
+      "sha256": "04b73c2590bd8a99e9ee5ae51bf6b66229edf896278bcb0b450f88e32fb51c73",
+      "size": 27184
     },
     {
       "name": "debian/libdconf1_0.40.0-5_amd64.deb",
@@ -536,14 +576,6 @@
       "component": "Debian runtime dependency",
       "sha256": "6e7f670e1cf493ae8f60dea52f5a4aef56605d5b06d921113d7c2a2800ff5af1",
       "size": 41796
-    },
-    {
-      "name": "debian/libde265-0_1.0.15-1+deb13u2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/libd/libde265/libde265-0_1.0.15-1%2bdeb13u2_amd64.deb",
-      "version": "1.0.15-1+deb13u2",
-      "component": "Debian runtime dependency",
-      "sha256": "4a76cf0ff4502176e780bfedfc848aedf4a1a55b1d154b27164ca4ce698c1aad",
-      "size": 190116
     },
     {
       "name": "debian/libdeflate0_1.23-2_amd64.deb",
@@ -568,6 +600,14 @@
       "component": "Debian runtime dependency",
       "sha256": "34f9d4bb6f73e4a7d2af533a04ca1ce7de8dfdab4d9af3d201a8d1c552261607",
       "size": 26372
+    },
+    {
+      "name": "debian/libdisplay-info2_0.2.0-2_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libd/libdisplay-info/libdisplay-info2_0.2.0-2_amd64.deb",
+      "version": "0.2.0-2",
+      "component": "Debian runtime dependency",
+      "sha256": "961924d484d4c14b6decb76cf0e860a1e7b6c89bfc85e527d873a89faf24b846",
+      "size": 73868
     },
     {
       "name": "debian/libdrm-amdgpu1_2.4.124-2_amd64.deb",
@@ -658,6 +698,22 @@
       "size": 422668
     },
     {
+      "name": "debian/libexo-2-0_4.20.0-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/e/exo/libexo-2-0_4.20.0-1_amd64.deb",
+      "version": "4.20.0-1",
+      "component": "Debian runtime dependency",
+      "sha256": "4305334d21f102ddd1b20bb3c0dc931a8776ce1fbf03e2c830124743bef0fb28",
+      "size": 252716
+    },
+    {
+      "name": "debian/libexo-common_4.20.0-1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/e/exo/libexo-common_4.20.0-1_all.deb",
+      "version": "4.20.0-1",
+      "component": "Debian runtime dependency",
+      "sha256": "ef6ded4b71ec85e2f12126c3d2da7579640677f1e0f6b49b7aa1e941721fd592",
+      "size": 29420
+    },
+    {
       "name": "debian/libexpat1_2.8.3-1~deb13u1_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/e/expat/libexpat1_2.8.3-1%7edeb13u1_amd64.deb",
       "version": "2.8.3-1~deb13u1",
@@ -698,46 +754,6 @@
       "size": 16036
     },
     {
-      "name": "debian/libfm-data_1.4.0-2_all.deb",
-      "url": "https://deb.debian.org/debian/pool/main/libf/libfm/libfm-data_1.4.0-2_all.deb",
-      "version": "1.4.0-2",
-      "component": "Debian runtime dependency",
-      "sha256": "7329d07fa95a4cf80d6a7b7af9fe26358a0362ed471f7dd7bae13c0eec879161",
-      "size": 251332
-    },
-    {
-      "name": "debian/libfm-extra4t64_1.4.0-2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/libf/libfm/libfm-extra4t64_1.4.0-2_amd64.deb",
-      "version": "1.4.0-2",
-      "component": "Debian runtime dependency",
-      "sha256": "86f4cdb35c714cce30f8c56fea9ed0f44e8f391b1da4984ae12e57ac6e3a8e85",
-      "size": 28132
-    },
-    {
-      "name": "debian/libfm-gtk-data_1.4.0-2_all.deb",
-      "url": "https://deb.debian.org/debian/pool/main/libf/libfm/libfm-gtk-data_1.4.0-2_all.deb",
-      "version": "1.4.0-2",
-      "component": "Debian runtime dependency",
-      "sha256": "bea95674d197230b63f74e190c0bb9a77fac7c7cdf56c80d1683ac07f4bed1d6",
-      "size": 30320
-    },
-    {
-      "name": "debian/libfm-gtk3-4t64_1.4.0-2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/libf/libfm/libfm-gtk3-4t64_1.4.0-2_amd64.deb",
-      "version": "1.4.0-2",
-      "component": "Debian runtime dependency",
-      "sha256": "f6d323903b1358b47c1f0b10e42bba748e395c13588d73ec9a54b2c6e2d8326e",
-      "size": 164516
-    },
-    {
-      "name": "debian/libfm4t64_1.4.0-2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/libf/libfm/libfm4t64_1.4.0-2_amd64.deb",
-      "version": "1.4.0-2",
-      "component": "Debian runtime dependency",
-      "sha256": "887060e1b16d6b1d75952ec23b0c3c9c637061c94de4196590fd8b782fa66958",
-      "size": 134420
-    },
-    {
       "name": "debian/libfontconfig1_2.15.0-2.3_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/f/fontconfig/libfontconfig1_2.15.0-2.3_amd64.deb",
       "version": "2.15.0-2.3",
@@ -768,6 +784,30 @@
       "component": "Debian runtime dependency",
       "sha256": "f8c35ec8606d0843bd3cf020c6cfa39ddfe717ec58ed826b5855ba9927eb0d55",
       "size": 26484
+    },
+    {
+      "name": "debian/libgarcon-1-0_4.20.0-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/g/garcon/libgarcon-1-0_4.20.0-1_amd64.deb",
+      "version": "4.20.0-1",
+      "component": "Debian runtime dependency",
+      "sha256": "e40f6e1d0d799bb4661cd89ec206c16e1658dccdf86094e862cc931191494cdf",
+      "size": 51320
+    },
+    {
+      "name": "debian/libgarcon-common_4.20.0-1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/g/garcon/libgarcon-common_4.20.0-1_all.deb",
+      "version": "4.20.0-1",
+      "component": "Debian runtime dependency",
+      "sha256": "52ef941f4499b8e68f9353a760353ec24d3dc64fee395542de632f3c5c343e2f",
+      "size": 64228
+    },
+    {
+      "name": "debian/libgarcon-gtk3-1-0_4.20.0-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/g/garcon/libgarcon-gtk3-1-0_4.20.0-1_amd64.deb",
+      "version": "4.20.0-1",
+      "component": "Debian runtime dependency",
+      "sha256": "a5f3536f46d8b836904cd6d74e9390e8d10cc9eb5a0d917994e86b5a2cfdc525",
+      "size": 21972
     },
     {
       "name": "debian/libgbm1_25.0.7-2+deb13u1_amd64.deb",
@@ -816,14 +856,6 @@
       "component": "Debian runtime dependency",
       "sha256": "11b62b53f4704de557e44b510e18a1a2106bcd9a3fc31a475a45952a9aa3dbb2",
       "size": 836252
-    },
-    {
-      "name": "debian/libgif7_5.2.2-1+deb13u1_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/g/giflib/libgif7_5.2.2-1%2bdeb13u1_amd64.deb",
-      "version": "5.2.2-1+deb13u1",
-      "component": "Debian runtime dependency",
-      "sha256": "619328ccf9ad6c621298f9daf5e695ff50e993a6d45dd0d7f6217e1bd2d1c4ce",
-      "size": 44052
     },
     {
       "name": "debian/libgl1-mesa-dri_25.0.7-2+deb13u1_amd64.deb",
@@ -890,30 +922,6 @@
       "size": 75172
     },
     {
-      "name": "debian/libgs-common_10.05.1~dfsg-1+deb13u3_all.deb",
-      "url": "https://deb.debian.org/debian-security/pool/updates/main/g/ghostscript/libgs-common_10.05.1%7edfsg-1%2bdeb13u3_all.deb",
-      "version": "10.05.1~dfsg-1+deb13u3",
-      "component": "Debian runtime dependency",
-      "sha256": "345d3eba04c00f652903e2aac59c5347ea74054e53fcf5d0dbc7500ea5e93a48",
-      "size": 148352
-    },
-    {
-      "name": "debian/libgs10-common_10.05.1~dfsg-1+deb13u3_all.deb",
-      "url": "https://deb.debian.org/debian-security/pool/updates/main/g/ghostscript/libgs10-common_10.05.1%7edfsg-1%2bdeb13u3_all.deb",
-      "version": "10.05.1~dfsg-1+deb13u3",
-      "component": "Debian runtime dependency",
-      "sha256": "d068356a8e7285cf8e74d2c66b3c198822570120704becf7211beed2f05c094f",
-      "size": 479360
-    },
-    {
-      "name": "debian/libgs10_10.05.1~dfsg-1+deb13u3_amd64.deb",
-      "url": "https://deb.debian.org/debian-security/pool/updates/main/g/ghostscript/libgs10_10.05.1%7edfsg-1%2bdeb13u3_amd64.deb",
-      "version": "10.05.1~dfsg-1+deb13u3",
-      "component": "Debian runtime dependency",
-      "sha256": "6b304d55801354de3fbaec0b000c8b31aa25335ebea25593b72832aff2228655",
-      "size": 2566432
-    },
-    {
       "name": "debian/libgssapi-krb5-2_1.21.3-5+deb13u1_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/k/krb5/libgssapi-krb5-2_1.21.3-5%2bdeb13u1_amd64.deb",
       "version": "1.21.3-5+deb13u1",
@@ -938,6 +946,38 @@
       "size": 4908188
     },
     {
+      "name": "debian/libgtk-layer-shell0_0.9.0-2_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/g/gtk-layer-shell/libgtk-layer-shell0_0.9.0-2_amd64.deb",
+      "version": "0.9.0-2",
+      "component": "Debian runtime dependency",
+      "sha256": "de8f0e98a4f48cea3bee516f76b5c314e5e6e7e684fff91fc26a87e970f5edbf",
+      "size": 56592
+    },
+    {
+      "name": "debian/libgtk2.0-0t64_2.24.33-7_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/g/gtk+2.0/libgtk2.0-0t64_2.24.33-7_amd64.deb",
+      "version": "2.24.33-7",
+      "component": "Debian runtime dependency",
+      "sha256": "d32dbd0327a9132ec895d350a70852688a9f481f1733a2cf4ef40642181dae8b",
+      "size": 1828416
+    },
+    {
+      "name": "debian/libgtk2.0-common_2.24.33-7_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/g/gtk+2.0/libgtk2.0-common_2.24.33-7_all.deb",
+      "version": "2.24.33-7",
+      "component": "Debian runtime dependency",
+      "sha256": "f874797252735a9d0d14e6e6baf93e7c1ea7b2bc7ee44ef7ec09fb715bfbc9e6",
+      "size": 2661068
+    },
+    {
+      "name": "debian/libgudev-1.0-0_238-6_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libg/libgudev/libgudev-1.0-0_238-6_amd64.deb",
+      "version": "238-6",
+      "component": "Debian runtime dependency",
+      "sha256": "890a55ea26f52062f377389e6326abeadb72a14741c95ab6a1c5a19c77c3c3d0",
+      "size": 14504
+    },
+    {
       "name": "debian/libharfbuzz0b_10.2.0-1+deb13u1_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/h/harfbuzz/libharfbuzz0b_10.2.0-1%2bdeb13u1_amd64.deb",
       "version": "10.2.0-1+deb13u1",
@@ -954,38 +994,6 @@
       "size": 8232
     },
     {
-      "name": "debian/libheif-plugin-dav1d_1.23.4-1~deb13u1_amd64.deb",
-      "url": "https://deb.debian.org/debian-security/pool/updates/main/libh/libheif/libheif-plugin-dav1d_1.23.4-1%7edeb13u1_amd64.deb",
-      "version": "1.23.4-1~deb13u1",
-      "component": "Debian runtime dependency",
-      "sha256": "d5914b5ca3fd9793b6cde5110908a9f5dc8ed467ffe4f2bdcfd1d92ff1d4892b",
-      "size": 22716
-    },
-    {
-      "name": "debian/libheif-plugin-libde265_1.23.4-1~deb13u1_amd64.deb",
-      "url": "https://deb.debian.org/debian-security/pool/updates/main/libh/libheif/libheif-plugin-libde265_1.23.4-1%7edeb13u1_amd64.deb",
-      "version": "1.23.4-1~deb13u1",
-      "component": "Debian runtime dependency",
-      "sha256": "e2ef1345e6bbc74ad922de9db01108522591edb2579a0b72d3fe50c4df7376df",
-      "size": 20220
-    },
-    {
-      "name": "debian/libheif1_1.23.4-1~deb13u1_amd64.deb",
-      "url": "https://deb.debian.org/debian-security/pool/updates/main/libh/libheif/libheif1_1.23.4-1%7edeb13u1_amd64.deb",
-      "version": "1.23.4-1~deb13u1",
-      "component": "Debian runtime dependency",
-      "sha256": "b1e37ecd9d6aca2114c332a04d5b728cab24703aa0aeb807b81e19f4284fecfd",
-      "size": 812372
-    },
-    {
-      "name": "debian/libhwy1t64_1.2.0-2+b2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/h/highway/libhwy1t64_1.2.0-2%2bb2_amd64.deb",
-      "version": "1.2.0-2+b2",
-      "component": "Debian runtime dependency",
-      "sha256": "540c4ff28255fbfa89468061b722dfc2b773b0c1ecf163a063202482dea5b119",
-      "size": 676044
-    },
-    {
       "name": "debian/libice6_2%3a1.1.1-1_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/libi/libice/libice6_1.1.1-1_amd64.deb",
       "version": "2%3a1.1.1-1",
@@ -994,44 +1002,12 @@
       "size": 65376
     },
     {
-      "name": "debian/libid3tag0_0.16.3-1_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/libi/libid3tag/libid3tag0_0.16.3-1_amd64.deb",
-      "version": "0.16.3-1",
-      "component": "Debian runtime dependency",
-      "sha256": "ca25bf355e247fbe3447ff7d9a09a94ff370ec077cdf074b9ca6adc6a61d4bcd",
-      "size": 34984
-    },
-    {
-      "name": "debian/libidn12_1.43-1_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/libi/libidn/libidn12_1.43-1_amd64.deb",
-      "version": "1.43-1",
-      "component": "Debian runtime dependency",
-      "sha256": "c87472105da3da12481627412aeb6088062c945cce2ee259c447fd27385a4850",
-      "size": 47740
-    },
-    {
       "name": "debian/libidn2-0_2.3.8-2_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/libi/libidn2/libidn2-0_2.3.8-2_amd64.deb",
       "version": "2.3.8-2",
       "component": "Debian runtime dependency",
       "sha256": "90b039bcdc4578f8e1c4935adf8dbb525e36a164deefdbbb8c45bac347d48278",
       "size": 109096
-    },
-    {
-      "name": "debian/libijs-0.35_0.35-15.2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/i/ijs/libijs-0.35_0.35-15.2_amd64.deb",
-      "version": "0.35-15.2",
-      "component": "Debian runtime dependency",
-      "sha256": "96b0d4bf4123e79e4202fbf79bb5689d981e00250042c6beeb4fefeb8c778381",
-      "size": 14772
-    },
-    {
-      "name": "debian/libimlib2t64_1.12.4-2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/i/imlib2/libimlib2t64_1.12.4-2_amd64.deb",
-      "version": "1.12.4-2",
-      "component": "Debian runtime dependency",
-      "sha256": "0abd807eb797a05bbcaa52f30b31f95c348859a110f5f680d7370661158267a4",
-      "size": 218740
     },
     {
       "name": "debian/libisl23_0.27-1_amd64.deb",
@@ -1050,28 +1026,12 @@
       "size": 32116
     },
     {
-      "name": "debian/libjbig2dec0_0.20-1+deb13u1_amd64.deb",
-      "url": "https://deb.debian.org/debian-security/pool/updates/main/j/jbig2dec/libjbig2dec0_0.20-1%2bdeb13u1_amd64.deb",
-      "version": "0.20-1+deb13u1",
-      "component": "Debian runtime dependency",
-      "sha256": "7d3f9b4e62b8ec477dd781234be02b8649dc563f8e67f91bbc02691a7ea3d4e3",
-      "size": 64876
-    },
-    {
       "name": "debian/libjpeg62-turbo_1%3a2.1.5-4_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/libj/libjpeg-turbo/libjpeg62-turbo_2.1.5-4_amd64.deb",
       "version": "1%3a2.1.5-4",
       "component": "Debian runtime dependency",
       "sha256": "5504299ad0e3c0a9ca9f962a68a650a040db52f9f416a109e74df48d55601d3f",
       "size": 168152
-    },
-    {
-      "name": "debian/libjxl0.11_0.11.2-0.1~deb13u2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/j/jpeg-xl/libjxl0.11_0.11.2-0.1%7edeb13u2_amd64.deb",
-      "version": "0.11.2-0.1~deb13u2",
-      "component": "Debian runtime dependency",
-      "sha256": "cd1ca3a52cb0d8fdce1d994bcbf0663de28c64add1cfe8096639ae8fa9808824",
-      "size": 1133312
     },
     {
       "name": "debian/libk5crypto3_1.21.3-5+deb13u1_amd64.deb",
@@ -1154,22 +1114,6 @@
       "size": 25978316
     },
     {
-      "name": "debian/libmenu-cache-bin_1.1.1-1_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/m/menu-cache/libmenu-cache-bin_1.1.1-1_amd64.deb",
-      "version": "1.1.1-1",
-      "component": "Debian runtime dependency",
-      "sha256": "04aa50e36f12aa0b9b4201cb8467199bdbcc62af3c35dc643efe04653b7b7d74",
-      "size": 32728
-    },
-    {
-      "name": "debian/libmenu-cache3_1.1.1-1_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/m/menu-cache/libmenu-cache3_1.1.1-1_amd64.deb",
-      "version": "1.1.1-1",
-      "component": "Debian runtime dependency",
-      "sha256": "a919a0ec9710bc1d04abacdba63049ba1ea15fe0cb7c2c4870777ca3d9844956",
-      "size": 18648
-    },
-    {
       "name": "debian/libmodule-implementation-perl_0.09-2_all.deb",
       "url": "https://deb.debian.org/debian/pool/main/libm/libmodule-implementation-perl/libmodule-implementation-perl_0.09-2_all.deb",
       "version": "0.09-2",
@@ -1234,6 +1178,14 @@
       "size": 135484
     },
     {
+      "name": "debian/libnotify4_0.8.6-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libn/libnotify/libnotify4_0.8.6-1_amd64.deb",
+      "version": "0.8.6-1",
+      "component": "Debian runtime dependency",
+      "sha256": "6f2beb5a20e948247c0c62aba87a7a2cece07c10e09978d1039b3cad2fa16951",
+      "size": 26648
+    },
+    {
       "name": "debian/libnspr4_2%3a4.36-1_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/n/nspr/libnspr4_4.36-1_amd64.deb",
       "version": "2%3a4.36-1",
@@ -1248,30 +1200,6 @@
       "component": "Debian runtime dependency",
       "sha256": "8d20d0754039e15e9bd2c8484e98dc9c2982907d4f20834da29a9501913d00b5",
       "size": 1394236
-    },
-    {
-      "name": "debian/libobrender32v5_3.6.1-12+b2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/o/openbox/libobrender32v5_3.6.1-12%2bb2_amd64.deb",
-      "version": "3.6.1-12+b2",
-      "component": "Debian runtime dependency",
-      "sha256": "f84c607b744f672429f310a95e3c85bad58a6002781283af62ea2a74e36c70b1",
-      "size": 66432
-    },
-    {
-      "name": "debian/libobt2v5_3.6.1-12+b2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/o/openbox/libobt2v5_3.6.1-12%2bb2_amd64.deb",
-      "version": "3.6.1-12+b2",
-      "component": "Debian runtime dependency",
-      "sha256": "f590a93c50bf7587ba8e6d9999df430566d04dc7447b2135bc7f2eb5ffc34c5a",
-      "size": 55440
-    },
-    {
-      "name": "debian/libopenjp2-7_2.5.3-2.1~deb13u2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/o/openjpeg2/libopenjp2-7_2.5.3-2.1%7edeb13u2_amd64.deb",
-      "version": "2.5.3-2.1~deb13u2",
-      "component": "Debian runtime dependency",
-      "sha256": "7ddf6360e8845853ba3c9cfaefc2ad6b92b2627eb8564a257f5f2a4c857f8748",
-      "size": 204616
     },
     {
       "name": "debian/libp11-kit0_0.25.5-3_amd64.deb",
@@ -1312,22 +1240,6 @@
       "component": "Debian runtime dependency",
       "sha256": "b506cf66f78ddf542ddb4bb4a68b3d748d41caa6e190e4480430a6630c1e5105",
       "size": 55568
-    },
-    {
-      "name": "debian/libpangoxft-1.0-0_1.56.3-1_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/p/pango1.0/libpangoxft-1.0-0_1.56.3-1_amd64.deb",
-      "version": "1.56.3-1",
-      "component": "Debian runtime dependency",
-      "sha256": "ef26d9fb780d39489a10dcec2da9b51ca4cceb2ee58cccd694a1dd36e7d403ef",
-      "size": 27560
-    },
-    {
-      "name": "debian/libpaper2_2.2.5-0.3+b2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/libp/libpaper/libpaper2_2.2.5-0.3%2bb2_amd64.deb",
-      "version": "2.2.5-0.3+b2",
-      "component": "Debian runtime dependency",
-      "sha256": "59a0dfce63ebc91dad24a5237d7f8c22b93d990b00c7fdc2f4edc9fa4ebb07e1",
-      "size": 16652
     },
     {
       "name": "debian/libparams-classify-perl_0.015-2+b4_amd64.deb",
@@ -1490,14 +1402,6 @@
       "size": 132372
     },
     {
-      "name": "debian/libspectre1_0.2.12-1+b2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/libs/libspectre/libspectre1_0.2.12-1%2bb2_amd64.deb",
-      "version": "0.2.12-1+b2",
-      "component": "Debian runtime dependency",
-      "sha256": "aa795368f23990b617b4268c05bd4bc0a71bc124f1642e75f4389cc489958f78",
-      "size": 50812
-    },
-    {
       "name": "debian/libstartup-notification0_0.12-8_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/s/startup-notification/libstartup-notification0_0.12-8_amd64.deb",
       "version": "0.12-8",
@@ -1584,6 +1488,14 @@
       "component": "Debian runtime dependency",
       "sha256": "e6364c07aeeffe9a95f267061d9df168e48e9dc9126c3b40e19dc829f67702a7",
       "size": 49420
+    },
+    {
+      "name": "debian/libthunarx-3-0_4.20.2-1+deb13u1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/t/thunar/libthunarx-3-0_4.20.2-1+deb13u1_amd64.deb",
+      "version": "4.20.2-1+deb13u1",
+      "component": "Debian runtime dependency",
+      "sha256": "64210d9349943a2a635190b776eb2c302a9e9c33af4119ef4c3c419e542e81a8",
+      "size": 122920
     },
     {
       "name": "debian/libtiff6_4.7.0-3+deb13u3_amd64.deb",
@@ -1674,12 +1586,20 @@
       "size": 317856
     },
     {
-      "name": "debian/libwebpdemux2_1.5.0-0.1_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/libw/libwebp/libwebpdemux2_1.5.0-0.1_amd64.deb",
-      "version": "1.5.0-0.1",
+      "name": "debian/libwnck-3-0_43.2-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libw/libwnck3/libwnck-3-0_43.2-1_amd64.deb",
+      "version": "43.2-1",
       "component": "Debian runtime dependency",
-      "sha256": "b6e4aba184b2c3f7ce88b3e49557fe0c38c909df54528ebe5e167ad651f0f593",
-      "size": 113392
+      "sha256": "54d240d236681afee5eead2827bbb777d95422bcc1c760ab0ba160438a0db8fc",
+      "size": 109740
+    },
+    {
+      "name": "debian/libwnck-3-common_43.2-1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libw/libwnck3/libwnck-3-common_43.2-1_all.deb",
+      "version": "43.2-1",
+      "component": "Debian runtime dependency",
+      "sha256": "a1c4e2f59a663d7410339f63ca28d200905124872d4b6cdceb291f67a58976ad",
+      "size": 229648
     },
     {
       "name": "debian/libx11-6_2%3a1.8.12-1_amd64.deb",
@@ -1858,6 +1778,70 @@
       "size": 50448
     },
     {
+      "name": "debian/libxfce4panel-2.0-4_4.20.4-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xfce4-panel/libxfce4panel-2.0-4_4.20.4-1_amd64.deb",
+      "version": "4.20.4-1",
+      "component": "Debian runtime dependency",
+      "sha256": "b52ca5085f49f634205b60a77492c286c1e96532414ae140ef93c04d4e2b5089",
+      "size": 81756
+    },
+    {
+      "name": "debian/libxfce4ui-2-0_4.20.1-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxfce4ui/libxfce4ui-2-0_4.20.1-1_amd64.deb",
+      "version": "4.20.1-1",
+      "component": "Debian runtime dependency",
+      "sha256": "785fb9a47008f5fb8085f65cb927c1d59c26a082b49ed10cbf6fa81aa75edd51",
+      "size": 79132
+    },
+    {
+      "name": "debian/libxfce4ui-common_4.20.1-1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxfce4ui/libxfce4ui-common_4.20.1-1_all.deb",
+      "version": "4.20.1-1",
+      "component": "Debian runtime dependency",
+      "sha256": "5a4d3e1e20677e3ad1a53385c6e813e55415a15c9cdf0653c3b8aa58696cb322",
+      "size": 229268
+    },
+    {
+      "name": "debian/libxfce4util-common_4.20.1-1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxfce4util/libxfce4util-common_4.20.1-1_all.deb",
+      "version": "4.20.1-1",
+      "component": "Debian runtime dependency",
+      "sha256": "5ab783ba4ac8a2cfc378ff9808ab86abece59a87a557146e819d102f8093d196",
+      "size": 63620
+    },
+    {
+      "name": "debian/libxfce4util7_4.20.1-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxfce4util/libxfce4util7_4.20.1-1_amd64.deb",
+      "version": "4.20.1-1",
+      "component": "Debian runtime dependency",
+      "sha256": "bf1e9723e7249b9e83e50b76a2a698d3461cfcb5a3662b13c1772fdc87999adf",
+      "size": 39404
+    },
+    {
+      "name": "debian/libxfce4windowing-0-0_4.20.2-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxfce4windowing/libxfce4windowing-0-0_4.20.2-1_amd64.deb",
+      "version": "4.20.2-1",
+      "component": "Debian runtime dependency",
+      "sha256": "44e3158c859c30aff647c78f0ff1531b0bd72c5629a422698d428522dd668412",
+      "size": 105256
+    },
+    {
+      "name": "debian/libxfce4windowing-common_4.20.2-1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxfce4windowing/libxfce4windowing-common_4.20.2-1_all.deb",
+      "version": "4.20.2-1",
+      "component": "Debian runtime dependency",
+      "sha256": "77342fc7b38a5880f271e4ec238db4ae273896c9001b939ae18fe0e510dd28a9",
+      "size": 50024
+    },
+    {
+      "name": "debian/libxfconf-0-3_4.20.0-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xfconf/libxfconf-0-3_4.20.0-1_amd64.deb",
+      "version": "4.20.0-1",
+      "component": "Debian runtime dependency",
+      "sha256": "836b43967d1f55b06df5cb61479c581592685b3935cd55ea5b5df5c358345340",
+      "size": 46640
+    },
+    {
       "name": "debian/libxfixes3_1%3a6.0.0-2+b4_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/libx/libxfixes/libxfixes3_6.0.0-2%2bb4_amd64.deb",
       "version": "1%3a6.0.0-2+b4",
@@ -1914,6 +1898,14 @@
       "size": 76516
     },
     {
+      "name": "debian/libxklavier16_5.4-5+b2_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxklavier/libxklavier16_5.4-5+b2_amd64.deb",
+      "version": "5.4-5+b2",
+      "component": "Debian runtime dependency",
+      "sha256": "c8e59bb6c5bc3697f7433888e4f99d262dda446d8cccac48838cf8665d8b4389",
+      "size": 43452
+    },
+    {
       "name": "debian/libxml2_2.12.7+dfsg+really2.9.14-2.1+deb13u3_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/libx/libxml2/libxml2_2.12.7%2bdfsg%2breally2.9.14-2.1%2bdeb13u3_amd64.deb",
       "version": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
@@ -1946,6 +1938,14 @@
       "size": 55912
     },
     {
+      "name": "debian/libxpresent1_1.0.1-1+b2_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxpresent/libxpresent1_1.0.1-1+b2_amd64.deb",
+      "version": "1.0.1-1+b2",
+      "component": "Debian runtime dependency",
+      "sha256": "0d0073d5928f380320412d20de5b961686a3619c8e7a3f66dbc54e14d5d5d554",
+      "size": 9816
+    },
+    {
       "name": "debian/libxrandr2_2%3a1.5.4-1+b3_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/libx/libxrandr/libxrandr2_1.5.4-1%2bb3_amd64.deb",
       "version": "2%3a1.5.4-1+b3",
@@ -1960,6 +1960,14 @@
       "component": "Debian runtime dependency",
       "sha256": "9d042dfd5e613be1e02e6ddd0c5c4adef19c5eb08f6db838c2eba672c496dca4",
       "size": 27896
+    },
+    {
+      "name": "debian/libxres1_2%3a1.2.1-1+b2_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libx/libxres/libxres1_1.2.1-1+b2_amd64.deb",
+      "version": "2%3a1.2.1-1+b2",
+      "component": "Debian runtime dependency",
+      "sha256": "995b467fa9d0d47b4bff46cafd11ac7067f36a0e30cfaa121e73df7f8af93041",
+      "size": 17492
     },
     {
       "name": "debian/libxshmfence1_1.3.3-1_amd64.deb",
@@ -2018,6 +2026,14 @@
       "size": 19320
     },
     {
+      "name": "debian/libyaml-0-2_0.2.5-2_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/liby/libyaml/libyaml-0-2_0.2.5-2_amd64.deb",
+      "version": "0.2.5-2",
+      "component": "Debian runtime dependency",
+      "sha256": "8a5475402801de445a17887bb72d03613565a6a84b216b4b606d1462c613eeb2",
+      "size": 52524
+    },
+    {
       "name": "debian/libyaml-tiny-perl_1.76-1_all.deb",
       "url": "https://deb.debian.org/debian/pool/main/liby/libyaml-tiny-perl/libyaml-tiny-perl_1.76-1_all.deb",
       "version": "1.76-1",
@@ -2040,14 +2056,6 @@
       "component": "Debian runtime dependency",
       "sha256": "ffc5578d5c2c30ca70d46113908f200a09ab6e5e9eda199463af3285dbbaae8c",
       "size": 3931296
-    },
-    {
-      "name": "debian/lxmenu-data_0.1.6-3_all.deb",
-      "url": "https://deb.debian.org/debian/pool/main/l/lxmenu-data/lxmenu-data_0.1.6-3_all.deb",
-      "version": "0.1.6-3",
-      "component": "Debian runtime dependency",
-      "sha256": "c7c738132895eea7b56aca66e291f9a1aa285b27987b9dff72450f11827ac9bf",
-      "size": 20324
     },
     {
       "name": "debian/media-types_13.0.0_all.deb",
@@ -2074,14 +2082,6 @@
       "size": 12436
     },
     {
-      "name": "debian/openbox_3.6.1-12+b2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/o/openbox/openbox_3.6.1-12%2bb2_amd64.deb",
-      "version": "3.6.1-12+b2",
-      "component": "Debian runtime dependency",
-      "sha256": "2250f7758694066d67b622b9612e942a9c0a06edb92c72bb948928320f891853",
-      "size": 301676
-    },
-    {
       "name": "debian/openssl_3.5.7-1~deb13u3_amd64.deb",
       "url": "https://deb.debian.org/debian-security/pool/updates/main/o/openssl/openssl_3.5.7-1%7edeb13u3_amd64.deb",
       "version": "3.5.7-1~deb13u3",
@@ -2098,14 +2098,6 @@
       "size": 22617900
     },
     {
-      "name": "debian/pcmanfm_1.4.0-1_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/p/pcmanfm/pcmanfm_1.4.0-1_amd64.deb",
-      "version": "1.4.0-1",
-      "component": "Debian runtime dependency",
-      "sha256": "4984c6ebdfecb07cd80a6937db5c8e81f0bde587e9be00982f73c3585656ca43",
-      "size": 285380
-    },
-    {
       "name": "debian/perl-modules-5.40_5.40.1-6+deb13u1_all.deb",
       "url": "https://deb.debian.org/debian/pool/main/p/perl/perl-modules-5.40_5.40.1-6%2bdeb13u1_all.deb",
       "version": "5.40.1-6+deb13u1",
@@ -2120,14 +2112,6 @@
       "component": "Debian runtime dependency",
       "sha256": "ef145c247787d6f40dcdefd5b417502484827cde0d555998c17fd5b27ec1e1dd",
       "size": 267736
-    },
-    {
-      "name": "debian/poppler-data_0.4.12-1_all.deb",
-      "url": "https://deb.debian.org/debian/pool/main/p/poppler-data/poppler-data_0.4.12-1_all.deb",
-      "version": "0.4.12-1",
-      "component": "Debian runtime dependency",
-      "sha256": "7951512a24fc4ea05c246a0f9891dd1ec9844a886de6550ebd8c50e57db5441d",
-      "size": 1601364
     },
     {
       "name": "debian/procps_2%3a4.0.4-9_amd64.deb",
@@ -2160,6 +2144,14 @@
       "component": "Debian runtime dependency",
       "sha256": "eacb51b412e4621e4b6d631a479f6f0589522416e494d8da0e680f1863b5cb44",
       "size": 5095572
+    },
+    {
+      "name": "debian/python3-urllib3_2.3.0-3+deb13u2_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/p/python-urllib3/python3-urllib3_2.3.0-3+deb13u2_all.deb",
+      "version": "2.3.0-3+deb13u2",
+      "component": "Debian runtime dependency",
+      "sha256": "8132c30c09060562e540025a5d5b1ee9dd3496234c36eab57339e8b94f9e6b38",
+      "size": 115344
     },
     {
       "name": "debian/python3.13-minimal_3.13.5-2+deb13u5_amd64.deb",
@@ -2210,6 +2202,22 @@
       "size": 16816
     },
     {
+      "name": "debian/thunar-data_4.20.2-1+deb13u1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/t/thunar/thunar-data_4.20.2-1+deb13u1_all.deb",
+      "version": "4.20.2-1+deb13u1",
+      "component": "Debian runtime dependency",
+      "sha256": "962a50621e323bd6bff4cce3b5235ed3bc91adfad424b4b9cbc408986768ab21",
+      "size": 881316
+    },
+    {
+      "name": "debian/thunar_4.20.2-1+deb13u1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/t/thunar/thunar_4.20.2-1+deb13u1_amd64.deb",
+      "version": "4.20.2-1+deb13u1",
+      "component": "Debian runtime dependency",
+      "sha256": "7aadd1f69704d80b54ce3e08fd57bdeb62592df8eeffa7b9a1e853553e54efc1",
+      "size": 408800
+    },
+    {
       "name": "debian/tigervnc-common_1.15.0+dfsg-2.1~deb13u1_amd64.deb",
       "url": "https://deb.debian.org/debian/pool/main/t/tigervnc/tigervnc-common_1.15.0%2bdfsg-2.1%7edeb13u1_amd64.deb",
       "version": "1.15.0+dfsg-2.1~deb13u1",
@@ -2232,14 +2240,6 @@
       "component": "Debian runtime dependency",
       "sha256": "0d3bf58703bfae405f0a7be7903c0a6e1f3d649cf919e4ec15233f8d0df021e9",
       "size": 19380
-    },
-    {
-      "name": "debian/tint2_17.0.1-1.2_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/t/tint2/tint2_17.0.1-1.2_amd64.deb",
-      "version": "17.0.1-1.2",
-      "component": "Debian runtime dependency",
-      "sha256": "cf87a1119787d7bfae48007806c9c42f73e7309c8c1a2f931478d8d2bfc4c51e",
-      "size": 397916
     },
     {
       "name": "debian/x11-common_1%3a7.7+24+deb13u1_all.deb",
@@ -2290,20 +2290,76 @@
       "size": 75840
     },
     {
-      "name": "debian/xfonts-encodings_1%3a1.0.4-2.2_all.deb",
-      "url": "https://deb.debian.org/debian/pool/main/x/xfonts-encodings/xfonts-encodings_1.0.4-2.2_all.deb",
-      "version": "1%3a1.0.4-2.2",
+      "name": "debian/xfce4-helpers_4.20.1-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xfce4-settings/xfce4-helpers_4.20.1-1_amd64.deb",
+      "version": "4.20.1-1",
       "component": "Debian runtime dependency",
-      "sha256": "56143f317d241b6dee0275aa1066df936a776810d3bb83fe58563965d9bbe3d3",
-      "size": 577104
+      "sha256": "4f38043bf4144a0bfa82f0e3284761ef829c2c82c6804733a74f34f6fbdd541f",
+      "size": 45120
     },
     {
-      "name": "debian/xfonts-utils_1%3a7.7+7_amd64.deb",
-      "url": "https://deb.debian.org/debian/pool/main/x/xfonts-utils/xfonts-utils_7.7%2b7_amd64.deb",
-      "version": "1%3a7.7+7",
+      "name": "debian/xfce4-notifyd_0.9.7-2_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xfce4-notifyd/xfce4-notifyd_0.9.7-2_amd64.deb",
+      "version": "0.9.7-2",
       "component": "Debian runtime dependency",
-      "sha256": "36e77ba3fd25a42d4b807808de93eba87c0bd53981ee94d27da4cee502387f35",
-      "size": 93340
+      "sha256": "73fff9184fba5a5c586e59e694057db41af6182e308210fd5df814f9f4d21fac",
+      "size": 229776
+    },
+    {
+      "name": "debian/xfce4-panel_4.20.4-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xfce4-panel/xfce4-panel_4.20.4-1_amd64.deb",
+      "version": "4.20.4-1",
+      "component": "Debian runtime dependency",
+      "sha256": "1c8079234fee586589cfd9982a2e741cbdfd9b36688a66abc9ca9acdbf9072e4",
+      "size": 835944
+    },
+    {
+      "name": "debian/xfce4-settings_4.20.1-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xfce4-settings/xfce4-settings_4.20.1-1_amd64.deb",
+      "version": "4.20.1-1",
+      "component": "Debian runtime dependency",
+      "sha256": "7f9dd0d6cd9fc6372300401463f9a874f4ca794937b1316c2c1395126176b662",
+      "size": 923756
+    },
+    {
+      "name": "debian/xfce4-whiskermenu-plugin_2.9.2-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xfce4-whiskermenu-plugin/xfce4-whiskermenu-plugin_2.9.2-1_amd64.deb",
+      "version": "2.9.2-1",
+      "component": "Debian runtime dependency",
+      "sha256": "a9b62b96717f7eb9a03bd15a8dac3b9ae1425844ea58b6d708179583f972f57c",
+      "size": 224760
+    },
+    {
+      "name": "debian/xfconf_4.20.0-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xfconf/xfconf_4.20.0-1_amd64.deb",
+      "version": "4.20.0-1",
+      "component": "Debian runtime dependency",
+      "sha256": "84cf28a22c060073254f9e83e418edad88ce6146c3114556fa2f8470662cfd16",
+      "size": 128136
+    },
+    {
+      "name": "debian/xfdesktop4-data_4.20.1-1_all.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xfdesktop4/xfdesktop4-data_4.20.1-1_all.deb",
+      "version": "4.20.1-1",
+      "component": "Debian runtime dependency",
+      "sha256": "4d49e514d55a78ebc7a12b0f1dd1ee737dbc4c0bd8d1ea82f410eb79db918ae1",
+      "size": 1118120
+    },
+    {
+      "name": "debian/xfdesktop4_4.20.1-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xfdesktop4/xfdesktop4_4.20.1-1_amd64.deb",
+      "version": "4.20.1-1",
+      "component": "Debian runtime dependency",
+      "sha256": "dd14fdf30914d71fd3e6cd8b90cf52fa0a28c94972bb1ce1a09e4aff2135cbe5",
+      "size": 212692
+    },
+    {
+      "name": "debian/xfwm4_4.20.0-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/x/xfwm4/xfwm4_4.20.0-1_amd64.deb",
+      "version": "4.20.0-1",
+      "component": "Debian runtime dependency",
+      "sha256": "2ead801170cada27a19e4a8e273b4260ebe39d97c1aefe1d97f47c65e7d5bec2",
+      "size": 478972
     },
     {
       "name": "debian/xkb-data_2.42-1_all.deb",

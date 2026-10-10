@@ -1,4 +1,4 @@
-"""Check authenticated HTTP, X11, window manager, and legacy RFB when selected."""
+"""Check authenticated HTTP, X11, the Xfce window manager, and legacy RFB when selected."""
 import os
 import base64
 from pathlib import Path
@@ -26,11 +26,11 @@ def check():
                    timeout=3, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for entry in Path("/proc").glob("[0-9]*/comm"):
         try:
-            if entry.read_text().strip() == "openbox":
+            if entry.read_text().strip() == "xfwm4":
                 return
         except OSError:
             continue
-    raise RuntimeError("Openbox is not running")
+    raise RuntimeError("xfwm4 is not running")
 
 
 if __name__ == "__main__":

@@ -211,11 +211,43 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn("mandatory: mandatory", html)
         self.assertIn("UI.customSettings.mandatory", ui)
 
-    def test_theme_and_openbox_xml_are_present(self):
-        for name in ("rc.xml", "menu.xml"):
-            ET.parse(ROOT / "rootfs/opt/.config/openbox" / name)
-        self.assertTrue((ROOT / "rootfs/usr/share/themes/115Dark/openbox-3/themerc").is_file())
+    def test_xfce_configuration_is_valid_and_remote_friendly(self):
+        directory = ROOT / "rootfs/opt/.config/xfce4/xfconf/xfce-perchannel-xml"
+        channels = {}
+        for path in directory.glob("*.xml"):
+            root = ET.parse(path).getroot()
+            self.assertEqual((root.tag, root.get("name")), ("channel", path.stem), path.name)
+            channels[path.stem] = root
+
+        def value(channel, path):
+            node = channels[channel]
+            for name in path.split("/"):
+                node = next(child for child in node if child.get("name") == name)
+            return node.get("value")
+
+        self.assertEqual(value("xfwm4", "general/use_compositing"), "false")
+        self.assertEqual(value("xsettings", "Gtk/EnableAnimations"), "false")
+        self.assertEqual(value("xsettings", "Net/CursorBlink"), "false")
+        self.assertEqual(value("xfce4-notifyd", "do-fadeout"), "false")
+        # The browser resizes the desktop; xfsettingsd must not restore a layout.
+        self.assertEqual(value("displays", "AutoEnableProfiles"), "false")
+        self.assertEqual(len(list(channels["displays"])), 2)
+        self.assertEqual(value("xfce4-keyboard-shortcuts", "commands/custom/override"), "true")
+        theme = value("xsettings", "Net/ThemeName")
+        self.assertEqual(value("xfwm4", "general/theme"), theme)
+        packages = {asset["name"].split("/")[-1].split("_")[0]
+                    for asset in json.loads((ROOT / "vendor/manifest.json").read_text())["assets"]}
+        self.assertTrue({"xfwm4", "xfce4-panel", "xfdesktop4", "xfce4-settings", "thunar", "arc-theme"} <= packages)
+        self.assertFalse({"openbox", "tint2", "pcmanfm"} & packages)
+        image = value("xfce4-desktop", "backdrop/screen0/monitorVNC-0/workspace0/last-image")
+        self.assertEqual(image, "/usr/share/backgrounds/115/desktop.png")
         ET.parse(ROOT / "rootfs/usr/share/backgrounds/115/desktop.svg")
+        launchers = [item.get("value") for item in channels["xfce4-panel"].iter("value")
+                     if (item.get("value") or "").endswith(".desktop")]
+        self.assertIn("/usr/share/applications/115-downloads.desktop", launchers)
+        self.assertTrue((ROOT / "rootfs/usr/share/applications/115-downloads.desktop").is_file())
+        for path in (ROOT / "rootfs/opt/Desktop").glob("*.desktop"):
+            self.assertNotIn("pcmanfm", path.read_text(), path.name)
 
 
 class LocalizationTests(unittest.TestCase):
@@ -284,7 +316,7 @@ class SupervisorTests(unittest.TestCase):
             "while True: time.sleep(0.05)\n"
         )
         blocker.chmod(0o755)
-        for command in ("Xtigervnc", "Xkasmvnc", "openbox", "pcmanfm", "tint2"):
+        for command in ("Xtigervnc", "Xkasmvnc", "xfwm4", "xfsettingsd", "xfce4-panel", "xfdesktop"):
             (self.bin / command).symlink_to(blocker)
         for command, source in {"tigervncpasswd": "#!/bin/sh\ncat\n", "kasmvncpasswd": '#!/bin/sh\ncat > "$6"\n', "xdpyinfo": "#!/bin/sh\nexit 0\n"}.items():
             path = self.bin / command
@@ -314,7 +346,7 @@ class SupervisorTests(unittest.TestCase):
                 os.kill(pid, 0)
 
     def test_critical_service_failure_exits_and_cleans_up(self):
-        process = self.launch(FAIL_SERVICE="openbox")
+        process = self.launch(FAIL_SERVICE="xfwm4")
         output, _ = process.communicate(timeout=8)
         self.assertEqual(process.returncode, 1, output)
         self.assertIn("shutting down", output)
@@ -323,16 +355,17 @@ class SupervisorTests(unittest.TestCase):
     def test_sigterm_stops_all_services_cleanly(self):
         process = self.launch()
         deadline = time.monotonic() + 5
-        while len(list(self.directory.glob("*.pid"))) < 5 and time.monotonic() < deadline:
+        # Display server, four Xfce parts and the legacy Websockify relay.
+        while len(list(self.directory.glob("*.pid"))) < 6 and time.monotonic() < deadline:
             time.sleep(0.05)
-        self.assertEqual(len(list(self.directory.glob("*.pid"))), 5)
+        self.assertEqual(len(list(self.directory.glob("*.pid"))), 6)
         process.send_signal(signal.SIGTERM)
         output, _ = process.communicate(timeout=8)
         self.assertEqual(process.returncode, 0, output)
         self.assert_children_stopped()
 
     def test_kasm_does_not_start_websockify_and_cleans_up(self):
-        process = self.launch(REMOTE_BACKEND="kasm", FAIL_SERVICE="openbox")
+        process = self.launch(REMOTE_BACKEND="kasm", FAIL_SERVICE="xfdesktop")
         output, _ = process.communicate(timeout=8)
         self.assertEqual(process.returncode, 1, output)
         self.assertIn("Started KasmVNC", output)

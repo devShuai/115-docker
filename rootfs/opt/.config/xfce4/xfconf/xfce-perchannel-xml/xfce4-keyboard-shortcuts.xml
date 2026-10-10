@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Command shortcuts replace the Debian defaults, which name apps not in this image.
+     Window manager shortcuts (Alt+Tab, Alt+F4, Ctrl+Alt+D) keep the Xfce defaults. -->
+<channel name="xfce4-keyboard-shortcuts" version="1.0">
+  <property name="commands" type="empty">
+    <property name="custom" type="empty">
+      <property name="override" type="bool" value="true"/>
+      <property name="&lt;Super&gt;b" type="string" value="/opt/115/115.sh"/>
+      <property name="&lt;Super&gt;e" type="string" value="thunar /opt/Downloads"/>
+      <property name="&lt;Primary&gt;&lt;Alt&gt;f" type="string" value="thunar"/>
+    </property>
+  </property>
+</channel>

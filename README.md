@@ -1,8 +1,8 @@
 # 115 浏览器 Docker 部署方案
 
-本工程默认使用 **KasmVNC 1.5.0 原生网页桌面**，包含 115 Linux 安装包、KasmVNC 安装包及服务端和网页客户端源码、283 个 Debian 系统依赖包、桌面主题、启动与健康检查脚本、Compose 配置和 HTTPS 反代示例。原来的 TigerVNC + Websockify + noVNC 完整保留，可通过环境变量回退。参考 [dream10201/115Docker](https://github.com/dream10201/115Docker) 的架构，直接从 Debian 构建自己的镜像。
+本工程默认使用 **KasmVNC 1.5.0 原生网页桌面**，包含 115 Linux 安装包、KasmVNC 安装包及服务端和网页客户端源码、290 个 Debian 系统依赖包、桌面主题、启动与健康检查脚本、Compose 配置和 HTTPS 反代示例。原来的 TigerVNC + Websockify + noVNC 完整保留，可通过环境变量回退。参考 [dream10201/115Docker](https://github.com/dream10201/115Docker) 的架构，直接从 Debian 构建自己的镜像。
 
-桌面采用 **Openbox 加 tint2 加 PCManFM**，搭配自带的深色窗口主题、Adwaita 深色控件、Papirus 图标、中文字体和静态壁纸。未启用桌面合成器、动画或动态壁纸；远程浏览器客户端是主要负载。连接后远程桌面分辨率跟随访问端窗口变化，115 启动时最大化。
+桌面采用 **Xfce 4.20（X11）**，搭配 Arc-Dark 主题、Papirus-Dark 图标、中文字体和静态壁纸。关闭窗口合成器、动画、文字光标闪烁和通知淡入淡出；远程浏览器客户端是主要负载。连接后远程桌面分辨率跟随访问端窗口变化，115 启动时最大化。
 
 ## 工程内容
 
@@ -21,17 +21,17 @@ runtime/
   start.sh                         启动与进程管理
   115.sh                           浏览器启动参数
   configure.py                     下载路径和 Cookie 配置
-  healthcheck.py                   后端认证 HTTP、X11 和 Openbox 检查
+  healthcheck.py                   后端认证 HTTP、X11 和 xfwm4 检查
   index.html                       默认连接入口
   web/                             两种网页客户端的默认中文界面与注入脚本
   kasmvnc/                         KasmVNC 校订版中文翻译和中文断开页
   novnc/                           自动连接和强制分辨率适配
   115Cookie/                       本工程的可选 Cookie 扩展
 rootfs/
-  opt/.config/                     Openbox、tint2、PCManFM、GTK 配置
-  opt/.gtkrc-2.0                   GTK 2 深色控件
+  opt/.config/xfce4/               Xfce 窗口、面板、桌面、快捷键和显示设置
+  opt/.config/gtk-3.0/             GTK 3 主题与字体
   opt/Desktop/                     浏览器与下载目录快捷方式
-  usr/share/themes/115Dark/         深色窗口主题
+  usr/share/applications/          下载目录启动器（面板和开始菜单使用）
   usr/share/backgrounds/115/        本地静态 SVG 壁纸
   usr/share/icons/                  浏览器启动图标
 vendor/
@@ -39,7 +39,7 @@ vendor/
   kasmvncserver-trixie-1.5.0-amd64.deb  KasmVNC 和编译完成的网页资源
   kasmvnc-1.5.0-source.tar.gz        KasmVNC 对应服务端源码
   kasmvnc-web-475ecfa53565.tar.gz     对应网页客户端完整源码
-  debian/                          283 个系统传递依赖 deb
+  debian/                          290 个系统传递依赖 deb
   novnc-1.6.0.tar.gz                noVNC 完整源码归档
   websockify-0.13.0.tar.gz           Websockify 完整源码归档
   manifest.json                    来源、版本、大小和校验值
@@ -58,15 +58,19 @@ data/                             部署时创建的运行数据
 backups/                          部署时创建的备份
 ```
 
-移动整个工程即可继续构建，复制时应包含约 326 MiB 的 vendor。系统和应用安装在 BuildKit `--network=none` 下完成，不查询 apt 源，不安装 npm/Python 网络依赖。Debian 基础镜像固定为 manifest 中的 OCI digest；首次构建仍需拉取或预先缓存基础镜像和 BuildKit 前端，CI 执行器镜像也由基础设施提供。[组件来源和许可](THIRD_PARTY.md)
+移动整个工程即可继续构建，复制时应包含约 327 MiB 的 vendor。系统和应用安装在 BuildKit `--network=none` 下完成，不查询 apt 源，不安装 npm/Python 网络依赖。Debian 基础镜像固定为 manifest 中的 OCI digest；首次构建仍需拉取或预先缓存基础镜像和 BuildKit 前端，CI 执行器镜像也由基础设施提供。[组件来源和许可](THIRD_PARTY.md)
 
 ## 桌面选择
 
-[Openbox](https://openbox.org/) 是精简且可配置的窗口管理器，[tint2](https://gitlab.com/o9000/tint2) 提供轻量任务栏，[PCManFM](https://github.com/lxde/pcmanfm) 负责文件管理和桌面，适合远程操作 115 和查看下载文件。
+[Xfce](https://www.xfce.org/) 4.20 只运行四个部件：xfwm4 窗口管理器、xfce4-panel 面板、xfdesktop 桌面和 xfsettingsd 设置服务，不启动会话管理器、电源管理或屏保。文件管理使用 Thunar。Xfce 与 115 浏览器的文件对话框同为 GTK 3，共用一套主题；中文翻译完整；Kasm 官方桌面镜像同样使用 Xfce。
 
-本地主题统一采用深蓝背景和青绿色强调色。底部任务栏包含浏览器、下载目录、窗口切换、托盘和时钟。壁纸在构建时转换为 PNG，运行时显示静态图片。Papirus 增加镜像体积，但不增加常驻图标服务。[Papirus 项目](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)
+外观采用 [Arc-Dark](https://github.com/jnsh/arc-theme) 窗口与控件主题、Papirus-Dark 图标和原有深蓝壁纸。底部面板依次为开始菜单（Whisker，收藏 115 浏览器、下载目录和文件管理器）、115 浏览器、下载目录、窗口列表、托盘和两行时钟。桌面保留浏览器和下载目录图标。
 
-快捷键：Alt 加 Tab 切换窗口，Alt 加 F4 关闭窗口，Super 加 E 打开下载目录，Super 加 B 打开浏览器，Super 加 D 显示桌面。双击标题栏切换最大化。
+远程桌面的每一帧变化都要编码传输，因此关闭窗口合成器（阴影、透明、切换预览）、GTK 动画、文字光标闪烁和通知淡入淡出，并使用灰度抗锯齿，文字在访问端缩放时更干净也更易压缩。Xfce 显示设置不保存配置、不弹出新显示器提示，分辨率完全由网页客户端决定。
+
+去掉 tint2 后同时去掉了它带入的 imlib2、ghostscript、libheif 和 urw 字体等依赖，vendor 中新增 45 个包、删除 38 个包，体积基本持平；其中约 10 MB 是新增的 Noto 彩色 emoji 字体，网页里的 emoji 不再显示为方块。
+
+快捷键：Alt 加 Tab 切换窗口，Alt 加 F4 关闭窗口，Super 加 E 打开下载目录，Super 加 B 打开浏览器，Ctrl 加 Alt 加 D 显示桌面。双击标题栏切换最大化。
 
 流水线在相同 1600×900 桌面、30 FPS 上限和全新测试 profile 下，依次运行两种后端，测量静态画面 8 秒与动画 15 秒。产物包含完整桌面及远程后端的 CPU、PSS 内存、WebSocket 接收量、测试画面的生成帧率、客户端像素变化和截图。像素以约 2 Hz 稀疏采样，只用于确认持续更新，不代表渲染 FPS。CPU 100% 表示一个核心，传输量不含 HTTP/TLS/TCP 开销；这是执行器上的固定场景对比，实际标签页、视频、下载和网络条件仍需在部署后测量。
 
@@ -74,7 +78,7 @@ backups/                          部署时创建的备份
 
 ```text
 访问端浏览器 → SSH 隧道或 HTTPS 认证代理 → 宿主机 127.0.0.1:1150
-  → KasmVNC 原生 HTTP/WebSocket → Openbox 桌面 → 115 浏览器
+  → KasmVNC 原生 HTTP/WebSocket → Xfce 桌面 → 115 浏览器
   回退：noVNC → Websockify → TigerVNC → 同一桌面
        /etc/115       → data/profile
        /opt/Downloads → data/downloads
@@ -119,7 +123,7 @@ docker compose logs --tail=100 browser115
 
 也可使用 `docker compose up -d --build`。构建校验所有本地包后离线安装 115、KasmVNC 和系统依赖，并解压用于回退的 noVNC 与 Websockify，不查询上游 latest 应用镜像或动态版本。BuildKit 临时挂载 vendor，使 deb 安装包不留在最终镜像层中。
 
-启动时先校验密码和环境参数、创建权限为 700 的 `/run/115`，再建立 D-Bus 会话、准备密码文件和浏览器配置，依次启动 KasmVNC、Openbox、PCManFM、tint2 和可选的 115 浏览器。Kasm 模式不启动 Python Websockify 中继；legacy 模式启动原 TigerVNC 与 Websockify。关键桌面服务退出会让容器退出，由 Docker 重启策略恢复；主动关闭浏览器会保留桌面。
+启动时先校验密码和环境参数、创建权限为 700 的 `/run/115`，再建立 D-Bus 会话、准备密码文件和浏览器配置，依次启动 KasmVNC、xfwm4、xfsettingsd、xfce4-panel、xfdesktop 和可选的 115 浏览器。Kasm 模式不启动 Python Websockify 中继；legacy 模式启动原 TigerVNC 与 Websockify。关键桌面服务退出会让容器退出，由 Docker 重启策略恢复；主动关闭浏览器会保留桌面。
 
 初始化设置默认下载目录为 `/opt/Downloads`，保留已有下载设置。首次登录后仍需在 115 中核对下载目录，并验证文件出现在宿主机。
 
@@ -148,7 +152,7 @@ LAN 直连可将 BIND_IP 改为宿主机实际 LAN 地址，同时限制来源�
 
 默认入口显式设置 `resize=remote`、自动连接和重连。KasmVNC 自带网页客户端的 remote resize 与服务端 `AcceptSetDesktopSize=1` 配合，改变 X11 桌面的真实分辨率。原后端继续使用 `runtime/novnc/mandatory.json` 强制 remote resize，覆盖旧的浏览器偏好。
 
-Openbox 管理最大化窗口。首次连接、访问端窗口变化和进出全屏时，远程桌面应随可用视口变化；DISPLAY_WIDTH、DISPLAY_HEIGHT 仅决定连接前的尺寸。网页设置中不要把 Resize 改为 Scaling 或 Disabled。高 DPI 默认按 CSS 像素适配，避免无意加倍编码像素数。
+xfwm4 管理最大化窗口。首次连接、访问端窗口变化和进出全屏时，远程桌面应随可用视口变化；DISPLAY_WIDTH、DISPLAY_HEIGHT 仅决定连接前的尺寸。网页设置中不要把 Resize 改为 Scaling 或 Disabled。高 DPI 默认按 CSS 像素适配，避免无意加倍编码像素数。
 
 ```bash
 docker compose exec -e DISPLAY=:115 browser115 xrandr --current
@@ -192,7 +196,7 @@ df -h data/downloads
 docker compose exec -d browser115 /opt/115/115.sh
 ```
 
-浏览器和桌面日志统一输出到容器日志，按每个 10 MB、最多 3 个轮转。健康检查验证 Kasm 原生认证 HTTP、X11 和 Openbox；legacy 模式额外验证 RFB greeting，不验证账号、下载任务或网页。Docker 不会仅因 unhealthy 自动重启，应接入已有告警系统。
+浏览器和桌面日志统一输出到容器日志，按每个 10 MB、最多 3 个轮转。健康检查验证 Kasm 原生认证 HTTP、X11 和 xfwm4；legacy 模式额外验证 RFB greeting，不验证账号、下载任务或网页。Docker 不会仅因 unhealthy 自动重启，应接入已有告警系统。
 
 同一 profile 只能由一个实例使用。下载文件可能属于 root，可对下载目录设置共享组或默认 ACL，不使用 chmod 777，也不假设 PUID 和 PGID 能改变这个自建镜像的进程身份。
 

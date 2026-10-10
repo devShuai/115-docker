@@ -67,9 +67,12 @@ for (( attempt=0; attempt<100; attempt++ )); do
 done
 [[ "$ready" == true ]] || { echo 'X11 did not become ready within 20 seconds.' >&2; exit 1; }
 
-spawn_critical Openbox openbox --config-file "${OPENBOX_CONFIG:-/opt/.config/openbox/rc.xml}"
-spawn_critical Desktop pcmanfm --desktop --profile default
-spawn_critical Panel tint2 -c "${TINT2_CONFIG:-/opt/.config/tint2/tint2rc}"
+# Xfce runs without its session manager so this supervisor sees every part.
+# The window manager starts first; the panel and desktop wait for it.
+spawn_critical 'Window manager' xfwm4 --compositor=off
+spawn_critical Settings xfsettingsd
+spawn_critical Panel xfce4-panel
+spawn_critical Desktop xfdesktop
 if [[ "$REMOTE_BACKEND" == legacy ]]; then
   spawn_critical noVNC "${WEBSOCKIFY_RUN:-/usr/local/lib/websockify/run}" \
     --web "${NO_VNC_HOME:-/usr/local/share/noVNC}" 1150 "127.0.0.1:$vnc_port"
