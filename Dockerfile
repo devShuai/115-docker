@@ -46,6 +46,10 @@ RUN mkdir -p /etc/115 /opt/Downloads /opt/.cache /opt/.config \
     && cp /opt/115/novnc/*.json /usr/local/share/noVNC/ \
     && cp /opt/115/web/zh-default.js /usr/local/share/noVNC/ \
     && cp /opt/115/web/zh-default.js /opt/115/kasmvnc/disconnected.html /usr/share/kasmvnc/www/ \
+    && cp /opt/115/web/update-link.js /usr/local/share/noVNC/ \
+    && cp /opt/115/web/update-link.js /usr/share/kasmvnc/www/ \
+    && echo 'window.UPDATE_URL = "";' >/usr/local/share/noVNC/update-config.js \
+    && echo 'window.UPDATE_URL = "";' >/usr/share/kasmvnc/www/update-config.js \
     && cp /opt/115/kasmvnc/zh_CN.json /usr/share/kasmvnc/www/app/locale/zh_CN.json \
     && python3 /opt/115/web/localize.py /usr/local/share/noVNC/vnc.html /usr/share/kasmvnc/www/vnc.html \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \

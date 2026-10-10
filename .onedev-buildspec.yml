@@ -19,9 +19,9 @@ jobs:
       commands: |
         set -euo pipefail
         python3 scripts/vendor.py
-        bash -n runtime/*.sh scripts/ci-smoke.sh
+        bash -n runtime/*.sh scripts/ci-smoke.sh manager/install-synology.sh
         python3 -m unittest discover -s tests -v
-        python3 -m py_compile scripts/ci-rfb.py scripts/ci-desktop.py scripts/cdp.py scripts/check-update.py
+        python3 -m py_compile scripts/ci-rfb.py scripts/ci-desktop.py scripts/cdp.py scripts/check-update.py manager/*.py
     runAs: '0:0'
     useTTY: false
     condition: SUCCESSFUL

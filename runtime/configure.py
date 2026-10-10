@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+from urllib.parse import urlsplit
 
 
 def write_private_json(path, value):
@@ -14,6 +15,16 @@ def write_private_json(path, value):
 
 
 def configure():
+    update_url = os.environ.get("UPDATE_URL", "")
+    if update_url:
+        parsed = urlsplit(update_url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("UPDATE_URL must be an HTTP(S) URL without credentials")
+    for root in (Path('/usr/share/kasmvnc/www'), Path('/usr/local/share/noVNC')):
+        if root.is_dir():
+            config = root / 'update-config.js'
+            config.write_text('window.UPDATE_URL = ' + json.dumps(update_url) + ';\n')
+            config.chmod(0o644)
     profile = Path(os.environ.get("PROFILE_DIR_IN_CONTAINER", "/etc/115"))
     preferences = profile / "Default" / "Preferences"
     content = json.loads(preferences.read_text()) if preferences.exists() else {}

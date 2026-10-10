@@ -137,6 +137,11 @@ class ConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no COOKIE values"):
             self.execute(ENABLE_COOKIE_EXTENSION="true")
 
+    def test_update_link_rejects_non_http_urls_and_embedded_credentials(self):
+        for value in ('javascript:alert(1)', 'http://user:secret@example.com/'):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'UPDATE_URL'):
+                self.execute(UPDATE_URL=value)
+
     def test_invalid_password_is_rejected_before_starting_services(self):
         for value in ("", "123456", "morethan8", "1234\n567"):
             for script in ("start.sh", "entrypoint.sh"):

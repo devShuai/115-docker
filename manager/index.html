@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>115 · 更新管理</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><div><p class="eyebrow">115 BROWSER</p><h1>更新管理</h1></div><nav><a id="desktop" hidden target="_blank" rel="noopener">打开桌面 ↗</a><button id="logout" class="quiet" hidden>退出登录</button></nav></header>
+    <section id="login" class="card narrow">
+      <h2>登录管理页面</h2><p class="muted">使用现有的远程桌面账号和密码。</p>
+      <form id="login-form"><label>账号<input id="username" autocomplete="username" value="115" required></label><label>密码<input id="password" type="password" autocomplete="current-password" required></label><button type="submit">登录</button></form>
+    </section>
+    <div id="dashboard" hidden>
+      <section class="card"><div class="section-heading"><h2>正式容器</h2><span id="health" class="badge">读取中</span></div><dl><dt>镜像</dt><dd id="tag">—</dd><dt>当前版本</dt><dd id="revision">—</dd></dl><div class="actions"><button id="check">检查更新</button><button id="update" disabled>更新到最新版</button></div><p id="checked" class="muted">点击检查，查询仓库中已通过验收的最新镜像。</p></section>
+      <section class="card"><div class="section-heading"><h2>运行状态</h2><span id="busy" class="badge">就绪</span></div><p id="phase" role="status">就绪</p><p class="muted">更新时桌面会短暂断开。新容器通过健康检查后恢复连接；启动失败会自动恢复旧容器和配套数据。</p></section>
+      <section class="card"><h2>回退记录</h2><p class="muted">每次更新都保留旧容器、旧镜像和升级前的浏览器数据。回退前还会保存当前数据副本；下载文件保留在原目录。</p><div id="history"></div></section>
+    </div>
+    <p id="error" class="error" role="alert"></p>
+    <footer>管理服务独立运行，桌面更新期间也可查看进度。</footer>
+  </main>
+  <dialog id="confirm"><h2 id="confirm-title"></h2><p id="confirm-text"></p><div class="actions"><button id="cancel" class="quiet">取消</button><button id="accept">开始</button></div></dialog>
+</body>
+</html>

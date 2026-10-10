@@ -6,6 +6,7 @@ backups
 tests
 .onedev-buildspec.yml
 scripts
+manager
 **/__pycache__
 **/*.pyc
 vendor/*.part
