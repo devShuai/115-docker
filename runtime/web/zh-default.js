@@ -25,4 +25,34 @@
   } catch (error) {
     // Storage can be blocked; the client keeps its own default.
   }
+
+  // Moving between monitors can change DPR without changing the CSS viewport.
+  // KasmVNC normally notices this only when the pointer leaves the window.
+  // Ask both clients to recalculate immediately; use their own debounce and
+  // mouse-coordinate mapping, and retain the user's Native Resolution choice.
+  if (window.matchMedia) {
+    var ratio, query;
+    function watchRatio() {
+      if (query) {
+        if (query.removeEventListener) query.removeEventListener("change", ratioChanged);
+        else query.removeListener(ratioChanged);
+      }
+      ratio = window.devicePixelRatio || 1;
+      query = window.matchMedia("(resolution: " + ratio + "dppx)");
+      if (query.addEventListener) query.addEventListener("change", ratioChanged);
+      else query.addListener(ratioChanged);
+    }
+    function ratioChanged() {
+      watchRatio();
+      window.requestAnimationFrame(function () {
+        window.dispatchEvent(new Event("resize"));
+      });
+    }
+    function checkRatio() {
+      if (ratio !== (window.devicePixelRatio || 1)) ratioChanged();
+    }
+    watchRatio();
+    window.addEventListener("pageshow", checkRatio);
+    document.addEventListener("visibilitychange", checkRatio);
+  }
 })();

@@ -48,6 +48,7 @@ RUN mkdir -p /etc/115 /opt/Downloads /opt/.cache /opt/.config \
     && cp /opt/115/web/zh-default.js /opt/115/kasmvnc/disconnected.html /usr/share/kasmvnc/www/ \
     && cp /opt/115/kasmvnc/zh_CN.json /usr/share/kasmvnc/www/app/locale/zh_CN.json \
     && python3 /opt/115/web/localize.py /usr/local/share/noVNC/vnc.html /usr/share/kasmvnc/www/vnc.html \
+    && python3 /opt/115/web/patch-client.py /usr/share/kasmvnc/www \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo Asia/Shanghai >/etc/timezone \
     && ln -sf /opt/115/115.sh /usr/local/115Browser/115.sh \

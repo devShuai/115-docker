@@ -2,6 +2,7 @@
 """Real Chromium connection, resize and equal-scene benchmark for both backends."""
 import base64
 import csv
+import ctypes
 import http.client
 import json
 import os
@@ -82,6 +83,86 @@ def desktop_size(env):
     text = subprocess.check_output(['xrandr', '--current'], env=env, text=True)
     match = re.search(r'current (\d+) x (\d+)', text)
     return [int(match[1]), int(match[2])]
+
+
+def verify_icons():
+    # Use the same decoder as Xfce, rather than merely checking file presence.
+    pixbuf = ctypes.CDLL('libgdk_pixbuf-2.0.so.0')
+    pixbuf.gdk_pixbuf_new_from_file.argtypes = [ctypes.c_char_p, ctypes.c_void_p]
+    pixbuf.gdk_pixbuf_new_from_file.restype = ctypes.c_void_p
+    objects = ctypes.CDLL('libgobject-2.0.so.0')
+    objects.g_object_unref.argtypes = [ctypes.c_void_p]
+    shortcut = Path('/opt/Desktop/115-browser.desktop').read_text()
+    icon = re.search(r'^Icon=(.+)$', shortcut, re.M)[1]
+    for path in (icon, '/usr/share/backgrounds/115/desktop.svg'):
+        image = pixbuf.gdk_pixbuf_new_from_file(path.encode(), None)
+        assert image, f'GTK cannot decode desktop icon/image: {path}'
+        objects.g_object_unref(image)
+    print('PASS: 115 desktop icon and GTK SVG loader', flush=True)
+
+
+POINTER_QUERY = '''import ctypes, json
+x = ctypes.CDLL('libX11.so.6')
+x.XOpenDisplay.restype = ctypes.c_void_p
+x.XOpenDisplay.argtypes = [ctypes.c_char_p]
+x.XDefaultRootWindow.restype = ctypes.c_ulong
+x.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+x.XQueryPointer.argtypes = [ctypes.c_void_p, ctypes.c_ulong,
+    ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_ulong),
+    *([ctypes.POINTER(ctypes.c_int)] * 4), ctypes.POINTER(ctypes.c_uint)]
+x.XCloseDisplay.argtypes = [ctypes.c_void_p]
+d = x.XOpenDisplay(None)
+assert d
+root, child = ctypes.c_ulong(), ctypes.c_ulong()
+rx, ry, wx, wy = (ctypes.c_int() for _ in range(4))
+mask = ctypes.c_uint()
+assert x.XQueryPointer(d, x.XDefaultRootWindow(d), ctypes.byref(root), ctypes.byref(child),
+    ctypes.byref(rx), ctypes.byref(ry), ctypes.byref(wx), ctypes.byref(wy), ctypes.byref(mask))
+print(json.dumps([rx.value, ry.value]))
+x.XCloseDisplay(d)
+'''
+
+
+def verify_scaling(client, backend, env):
+    results = []
+    cases = [(1280,720,1.25,False), (960,640,1.25,False),
+             (960,640,1.5,False), (960,640,2,False), (961,641,1.25,False)]
+    if backend == 'kasm':
+        cases += [(960,640,1.25,True), (960,640,2,True)]
+    for width,height,ratio,native in cases:
+        client.call('Emulation.setDeviceMetricsOverride',
+                    dict(width=width,height=height,deviceScaleFactor=ratio,mobile=False))
+        if backend == 'kasm':
+            client.evaluate("(()=>{const el=document.getElementById('noVNC_setting_enable_hidpi');"
+                            f"el.checked={str(native).lower()};el.dispatchEvent(new Event('change'));" + "})()")
+        # Kasm rounds the CSS container to even pixels; noVNC keeps odd sizes.
+        logical = [size // 2 * 2 if backend == 'kasm' else size for size in (width,height)]
+        expected = [int(size * ratio) if native else size for size in logical]
+        def matched():
+            client.pump(.1)
+            canvas = client.evaluate("(()=>{const c=Array.from(document.querySelectorAll('#noVNC_container canvas')).find(c=>c.offsetParent!==null);if(!c)return null;const r=c.getBoundingClientRect();return {pixels:[c.width,c.height],rect:[r.left,r.top,r.width,r.height]};})()")
+            if not canvas or canvas['pixels'] != expected or desktop_size(env) != expected:
+                return None
+            assert abs(canvas['rect'][2]-logical[0]) <= 2 and abs(canvas['rect'][3]-logical[1]) <= 2, f'Scaled canvas does not fit viewport: {canvas}'
+            return canvas
+        canvas = wait_for(matched, f'{backend} scaled viewport {width}x{height} DPR {ratio}, native={native}', seconds=25)
+        assert client.evaluate('devicePixelRatio') == ratio
+        left,top,cw,ch = canvas['rect']
+        px,py = left+cw*.375, top+ch*.5
+        client.call('Input.dispatchMouseEvent', dict(type='mouseMoved', x=px, y=py))
+        target = [int(expected[0]*.375), int(expected[1]*.5)]
+        def pointer_matches():
+            client.pump(.1)
+            position = json.loads(subprocess.check_output(['python3','-c',POINTER_QUERY],env=env,text=True))
+            return position if all(abs(a-b) <= 2 for a,b in zip(position,target)) else None
+        pointer = wait_for(pointer_matches, f'{backend} scaled pointer coordinates', seconds=10)
+        results.append(dict(viewport=[width,height],device_pixel_ratio=ratio,native_resolution=native,desktop=expected,pointer=pointer))
+        print(f'PASS: {backend} scaled viewport DPR {ratio}, native={native}, X11 {expected}, pointer {pointer}',flush=True)
+    if backend == 'kasm':
+        client.evaluate("(()=>{const el=document.getElementById('noVNC_setting_enable_hidpi');el.checked=false;el.dispatchEvent(new Event('change'));})()")
+    client.call('Emulation.setDeviceMetricsOverride',dict(width=1600,height=900,deviceScaleFactor=1,mobile=False))
+    wait_for(lambda: (client.pump(.1) or desktop_size(env) == [1600,900]), 'restore benchmark resolution')
+    return results
 
 
 def canvas_sample(client):
@@ -227,6 +308,7 @@ def run_backend(backend):
             return client.evaluate("document.documentElement?.classList.contains('noVNC_connected')")
         wait_for(connected, f'{backend} real web client connection')
         verify_client_language(client, backend)
+        scaling_checks = verify_scaling(client, backend, env)
         print(f'PASS: {backend} Chinese web client and Asia/Shanghai desktop time zone', flush=True)
         sizes = []
         for width, height in ((1024,768), (1280,720), (1920,1080), (1600,900)):
@@ -292,7 +374,7 @@ def run_backend(backend):
         assert Path('/run/115').stat().st_mode & 0o777 == 0o700
         assert Path('/usr/share/backgrounds/115/desktop.png').stat().st_size > 0
         assert not re.search(r'XDG_RUNTIME_DIR.*not available|Unable to set up transient service directory', (OUT/f'{backend}-desktop.log').read_text())
-        return dict(backend=backend, resolutions=sizes, measurements=measurements, client_js_errors=received['errors'])
+        return dict(backend=backend, resolutions=sizes, scaling_checks=scaling_checks, measurements=measurements, client_js_errors=received['errors'])
     except Exception:
         if client:
             try:
@@ -318,6 +400,7 @@ def run_backend(backend):
 
 def main():
     OUT.mkdir(exist_ok=True)
+    verify_icons()
     for backend in ('kasm','legacy'):
         result = subprocess.run(['/opt/115/entrypoint.sh'], env={**os.environ,'REMOTE_BACKEND':backend,'PASSWORD':'invalid'}, capture_output=True, text=True, timeout=5)
         assert result.returncode != 0 and 'PASSWORD must' in result.stderr

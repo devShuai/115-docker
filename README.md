@@ -152,13 +152,17 @@ LAN 直连可将 BIND_IP 改为宿主机实际 LAN 地址，同时限制来源�
 
 默认入口显式设置 `resize=remote`、自动连接和重连。KasmVNC 自带网页客户端的 remote resize 与服务端 `AcceptSetDesktopSize=1` 配合，改变 X11 桌面的真实分辨率。原后端继续使用 `runtime/novnc/mandatory.json` 强制 remote resize，覆盖旧的浏览器偏好。
 
-xfwm4 管理最大化窗口。首次连接、访问端窗口变化和进出全屏时，远程桌面应随可用视口变化；DISPLAY_WIDTH、DISPLAY_HEIGHT 仅决定连接前的尺寸。网页设置中不要把 Resize 改为 Scaling 或 Disabled。高 DPI 默认按 CSS 像素适配，避免无意加倍编码像素数。
+xfwm4 管理最大化窗口。首次连接、访问端窗口变化和进出全屏时，远程桌面应随可用视口变化；DISPLAY_WIDTH、DISPLAY_HEIGHT 仅决定连接前的尺寸。网页设置中不要把 Resize 改为 Scaling 或 Disabled。
+
+Mac Retina 和系统显示缩放默认按网页的 CSS 逻辑像素适配，保持可用的界面大小与较低编码开销。例如可用网页区域为 1440×900、像素比例为 2 时，默认远程桌面仍为 1440×900。跨不同缩放比例的屏幕时，客户端主动通知分辨率变化；缩小窗口或调整网页缩放不会再触发 KasmVNC 的“小屏高 DPI”自动放大规则。KasmVNC 会将尺寸向下取整到偶数，因此部分窗口边缘可能留出 1 个 CSS 像素。
+
+若希望按 Retina 物理像素渲染，可在 KasmVNC 网页设置的显示选项中开启“原生分辨率”，此时同一视口将请求 2880×1800。它会提高画面清晰度，但像素数量变成 4 倍，也可能使远程桌面控件显得更小；根据 NAS 性能与可读性选择。legacy/noVNC 继续使用逻辑像素适配。
 
 ```bash
 docker compose exec -e DISPLAY=:115 browser115 xrandr --current
 ```
 
-改变窗口后再次执行，确认实际尺寸变化，并检查 115 内容重新布局。流水线使用真实网页客户端验证 1024×768、1280×720、1920×1080、1600×900，要求网页 canvas 与 xrandr 同时匹配。[KasmVNC 配置](https://docs.kasmvnc.com/docs/configuration/)
+改变窗口后再次执行，确认实际尺寸变化，并检查 115 内容重新布局。流水线使用真实网页客户端验证 1024×768、1280×720、1920×1080、1600×900，要求网页 canvas 与 xrandr 同时匹配；另模拟 125%、150%、200% 像素比例、窄窗口和奇数尺寸，验证逻辑/原生分辨率及实际 X11 鼠标坐标。[KasmVNC 配置](https://docs.kasmvnc.com/docs/configuration/)
 
 多个访问端共享同一桌面和分辨率，不同窗口大小可能互相影响。独立会话使用独立 Compose 项目、profile 和宿主机端口。
 

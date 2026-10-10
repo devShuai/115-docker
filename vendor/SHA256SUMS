@@ -294,3 +294,4 @@ a9b62b96717f7eb9a03bd15a8dac3b9ae1425844ea58b6d708179583f972f57c  debian/xfce4-w
 dd14fdf30914d71fd3e6cd8b90cf52fa0a28c94972bb1ce1a09e4aff2135cbe5  debian/xfdesktop4_4.20.1-1_amd64.deb
 2ead801170cada27a19e4a8e273b4260ebe39d97c1aefe1d97f47c65e7d5bec2  debian/xfwm4_4.20.0-1_amd64.deb
 196ff18533382f64e057ea49df2bb486bd4275a4cc0917361edb560b8756dada  debian/xkb-data_2.42-1_all.deb
+aba248f2913dbcbb2bde40621b7478575983bfc18fdf61562413c82a4bef9995  debian/librsvg2-common_2.60.0+dfsg-1_amd64.deb

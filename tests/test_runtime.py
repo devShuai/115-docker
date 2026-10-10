@@ -23,6 +23,9 @@ spec.loader.exec_module(configure)
 spec = importlib.util.spec_from_file_location("localize", ROOT / "runtime/web/localize.py")
 localize = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(localize)
+spec = importlib.util.spec_from_file_location("patch_client", ROOT / "runtime/web/patch-client.py")
+patch_client = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(patch_client)
 BASH = os.environ.get("TEST_BASH", shutil.which("bash"))
 version = subprocess.check_output([BASH, "-c", "printf '%s' \"$BASH_VERSION\""], text=True)
 MODERN_BASH = tuple(int(v) for v in version.split(".")[:2]) >= (4, 3)
@@ -256,6 +259,15 @@ class ConfigurationTests(unittest.TestCase):
 class LocalizationTests(unittest.TestCase):
     # Technical names that the client shows unchanged in every language.
     UNTRANSLATED = {"Canvas2D", "WebGL", "Ctrl+Shift+"}
+
+    def test_pinned_kasm_bundle_accepts_only_the_reviewed_dpi_patch(self):
+        bundle = deb_member(KASM_DEB, "./usr/share/kasmvnc/www/assets/ui-BOjwDkC7.js")
+        patched = patch_client.patch_bundle(bundle)
+        self.assertEqual(patch_client.patch_bundle(patched), patched)
+        self.assertNotIn(patch_client.ORIGINAL, patched)
+        self.assertIn("Window moved to another screen with different pixel ratio", patched)
+        with self.assertRaises(ValueError):
+            patch_client.patch_bundle(bundle.replace(patch_client.ORIGINAL, "else if(changedUpstream)"))
 
     def test_web_clients_load_chinese_defaults_first(self):
         with tarfile.open(ROOT / "vendor/novnc-1.6.0.tar.gz") as archive:

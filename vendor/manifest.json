@@ -1,5 +1,5 @@
 {
-  "checked_on": "2026-10-10",
+  "checked_on": "2026-10-11",
   "assets": [
     {
       "name": "115browser-36.0.1-amd64.deb",
@@ -2368,6 +2368,14 @@
       "component": "Debian runtime dependency",
       "sha256": "196ff18533382f64e057ea49df2bb486bd4275a4cc0917361edb560b8756dada",
       "size": 789736
+    },
+    {
+      "name": "debian/librsvg2-common_2.60.0+dfsg-1_amd64.deb",
+      "url": "https://deb.debian.org/debian/pool/main/libr/librsvg/librsvg2-common_2.60.0+dfsg-1_amd64.deb",
+      "version": "2.60.0+dfsg-1",
+      "component": "Debian runtime dependency",
+      "sha256": "aba248f2913dbcbb2bde40621b7478575983bfc18fdf61562413c82a4bef9995",
+      "size": 154464
     }
   ],
   "base_image": "debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f"
