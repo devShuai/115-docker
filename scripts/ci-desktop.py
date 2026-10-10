@@ -93,6 +93,19 @@ def canvas_sample(client):
     })()""")
 
 
+def verify_client_language(client, backend):
+    # The headless client runs with an English browser language on purpose.
+    assert client.evaluate('document.documentElement.lang') == 'zh-CN', 'Web client page is not marked Chinese'
+    if backend == 'kasm':
+        expected = json.loads((ROOT/'runtime/kasmvnc/zh_CN.json').read_text())['IME Input Mode']
+        label = client.evaluate("document.getElementById('noVNC_setting_enable_ime')?.closest('label')?.querySelector('.slider-label')?.textContent.trim()")
+        assert label == expected, f'KasmVNC client is not Chinese: {label!r}'
+        assert client.evaluate("document.getElementById('noVNC_setting_enable_ime').checked"), 'IME input mode is not on by default'
+    else:
+        title = client.evaluate("document.getElementById('noVNC_settings_button')?.title")
+        assert title == '设置', f'noVNC client is not Chinese: {title!r}'
+
+
 def stop_group(process):
     if process and process.poll() is None:
         os.killpg(process.pid, signal.SIGTERM)
@@ -143,6 +156,8 @@ def run_backend(backend):
            'AUTO_START': 'true', 'ENABLE_COOKIE_EXTENSION': 'false', 'DISPLAY': ':115',
            'DISPLAY_WIDTH': '1600', 'DISPLAY_HEIGHT': '900', 'VNC_FPS': '30', 'KASM_THREADS': '2',
            'KASM_WEBP_BUDGET': '0',
+           # Container Manager passes TZ empty; the desktop must still use China time.
+           'TZ': '',
            'PROFILE_DIR_IN_CONTAINER': str(profile/'server'), 'RUNTIME_DIR': '/run/115'}
     profile.mkdir(parents=True)
     launcher = profile/'launch.sh'
@@ -163,6 +178,8 @@ def run_backend(backend):
         verify_auth(backend)
         fixture = page_client(server_port, 'perf-fixture.html')
         wait_for(lambda: fixture.evaluate('!!window.benchmark'), 'visible browser fixture')
+        zone = fixture.evaluate('Intl.DateTimeFormat().resolvedOptions().timeZone')
+        assert zone == 'Asia/Shanghai', f'115 Browser time zone is {zone!r}'
         if backend == 'legacy':
             subprocess.run(['python3', str(ROOT/'scripts/ci-rfb.py')], env=env, check=True)
         client_process = subprocess.Popen([
@@ -209,6 +226,8 @@ def run_backend(backend):
                 client.evaluate("(()=>{const d=document.querySelector('#noVNC_credentials_dlg');const p=document.querySelector('#noVNC_password_input');if(d?.classList.contains('noVNC_open')&&p&&p.offsetParent!==null&&!window.ciCredentialsSent){window.ciCredentialsSent=true;p.value='Check123';document.querySelector('#noVNC_credentials_button').click();}})()")
             return client.evaluate("document.documentElement?.classList.contains('noVNC_connected')")
         wait_for(connected, f'{backend} real web client connection')
+        verify_client_language(client, backend)
+        print(f'PASS: {backend} Chinese web client and Asia/Shanghai desktop time zone', flush=True)
         sizes = []
         for width, height in ((1024,768), (1280,720), (1920,1080), (1600,900)):
             client.call('Emulation.setDeviceMetricsOverride', dict(width=width, height=height, deviceScaleFactor=1, mobile=False))

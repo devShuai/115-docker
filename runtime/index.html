@@ -17,6 +17,9 @@
     target.searchParams.set('autoconnect', '1');
     target.searchParams.set('reconnect', '1');
     target.searchParams.set('reconnect_delay', '2000');
+    // The client UI defaults to Chinese; ?lang=en on this page is passed through.
+    const language = new URLSearchParams(window.location.search).get('lang');
+    if (language) target.searchParams.set('lang', language);
     window.location.replace(target.href);
   </script>
 </body>

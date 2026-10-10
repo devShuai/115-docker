@@ -14,4 +14,6 @@
 | Debian 和桌面系统包 | manifest 中逐包锁定版本 | [Debian](https://www.debian.org/)，283 个传递依赖 deb 已保存在 vendor/debian，各组件许可保存在镜像的 `/usr/share/doc/组件/copyright` |
 | Papirus 图标 | Debian 软件源版本 | [Papirus](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)，GPL 3.0，以系统包版权信息为准 |
 
+`runtime/kasmvnc/zh_CN.json` 由上述 KasmVNC 网页客户端的 `app/locale/zh_CN.json` 校订和补全而来，`runtime/kasmvnc/disconnected.html` 改写自同一客户端的断开页，两者沿用该客户端归档内 LICENSE 的许可。
+
 noVNC、Websockify、KasmVNC 及对应 kasmweb 客户端源码与许可证保留在 `vendor/`。KasmVNC 的安装包包含编译完成的网页资源，不需要 npm 安装。115 安装包为本地构建准备；若要公开分发工程或镜像，先确认 115 安装包的分发许可。Debian 基础镜像固定 OCI digest，仍需预先拉取或缓存；系统和应用安装步骤在禁用网络时从当前工程完成。

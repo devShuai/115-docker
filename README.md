@@ -23,6 +23,8 @@ runtime/
   configure.py                     下载路径和 Cookie 配置
   healthcheck.py                   后端认证 HTTP、X11 和 Openbox 检查
   index.html                       默认连接入口
+  web/                             两种网页客户端的默认中文界面与注入脚本
+  kasmvnc/                         KasmVNC 校订版中文翻译和中文断开页
   novnc/                           自动连接和强制分辨率适配
   115Cookie/                       本工程的可选 Cookie 扩展
 rootfs/
@@ -156,6 +158,21 @@ docker compose exec -e DISPLAY=:115 browser115 xrandr --current
 
 多个访问端共享同一桌面和分辨率，不同窗口大小可能互相影响。独立会话使用独立 Compose 项目、profile 和宿主机端口。
 
+## 中文环境与时区
+
+镜像默认 `zh_CN.UTF-8` 和 `LANGUAGE=zh_CN:zh`，中文字体为 Noto Sans/Serif/Mono CJK SC。Debian slim 基础镜像会在安装时丢弃全部翻译文件，导致即使语言是中文，桌面菜单和 GTK 对话框（例如浏览器的“打开文件”窗口）仍显示英文。构建时通过 dpkg 规则保留 `/usr/share/locale/zh_CN`，并在构建中断言 GTK 中文翻译存在。
+
+时区默认 `Asia/Shanghai`。群晖 Container Manager 图形界面创建的容器常常不带 `TZ` 或传入空值，空 `TZ` 会被系统当作 UTC，入口统一回落到北京时间。需要其他时区时设置 IANA 名称，例如 `TZ=Asia/Tokyo` 或 `TZ=UTC`；不存在的名称会在启动 D-Bus 前被拒绝，避免桌面时钟和下载时间悄悄变成 UTC。
+
+KasmVNC 网页客户端原本按访问端浏览器的语言显示，浏览器首选英文时整套界面都是英文。现在 `vnc.html` 加载前先注入 `zh-default.js`，不论浏览器语言都显示简体中文；需要英文时访问 `/?lang=en`。KasmVNC 自带的中文翻译缺少 23 项并有较多机翻，`runtime/kasmvnc/zh_CN.json` 是保留全部原有词条的校订版，“会话已断开”页面也换成中文并提供重新连接。原 noVNC 后端同样默认中文。
+
+中文输入使用访问端电脑自己的输入法：默认开启 KasmVNC 设置中的“使用本机输入法（IME）”，首次访问自动打开；在设置里关闭后，浏览器会记住选择。镜像内不安装 fcitx 等输入法，也不需要在远程桌面里切换输入法。原 noVNC 后端没有这项功能，中文请通过剪贴板粘贴。
+
+```bash
+docker compose exec browser115 date
+docker compose exec browser115 sh -c 'ls /usr/share/locale/zh_CN/LC_MESSAGES | head'
+```
+
 ## HTTPS 认证入口
 
 默认后端使用 `nginx/115-kasm.conf.example`，在同一宿主机 Nginx 的 http 上下文加载。替换域名、证书路径和上游端口，配置证书与续期，执行 `sudo nginx -t` 后重载 Nginx。1150 保持回环绑定。示例将 Authorization 与 WebSocket 升级头转发给 KasmVNC，由原生认证校验配置的用户名和长密码。
@@ -278,7 +295,7 @@ docker compose -f compose.yaml -f compose.compat.yaml up -d --build
 
 ## 群晖启动报错处理
 
-在 Container Manager 界面直接创建容器时，环境变量名是 **`PASSWORD`**，Kasm 模式值为 8～128 位英文字母或数字（推荐至少 16 位），并设置 `REMOTE_USER=115`；legacy 模式恰好 8 位。`VNC_PASSWORD` 是本项目 Compose 使用的 `.env` 变量，Compose 会将其映射为容器的 `PASSWORD`。两者不能在直接创建容器时混用。修改环境变量后重新创建容器，并继续挂载原来的 `/etc/115` 和 `/opt/Downloads` 数据目录；仅重新启动旧容器不会更新其环境配置。
+在 Container Manager 界面直接创建容器时，环境变量名是 **`PASSWORD`**，Kasm 模式值为 8～128 位英文字母或数字（推荐至少 16 位），并设置 `REMOTE_USER=115`；legacy 模式恰好 8 位。`VNC_PASSWORD` 是本项目 Compose 使用的 `.env` 变量，Compose 会将其映射为容器的 `PASSWORD`。两者不能在直接创建容器时混用。修改环境变量后重新创建容器，并继续挂载原来的 `/etc/115` 和 `/opt/Downloads` 数据目录；仅重新启动旧容器不会更新其环境配置。时区不需要手动添加，未设置或留空时使用 `Asia/Shanghai`。
 
 `XDG_RUNTIME_DIR "/run/115" not available` 是旧镜像的启动顺序问题；使用包含 `runtime/entrypoint.sh` 修复的镜像。无需把 `/run/115` 映射到 NAS 持久目录，也不要在 Container Manager 中覆盖镜像的启动命令。
 
@@ -308,7 +325,8 @@ sudo sysctl -w "fs.inotify.max_user_watches=$watch_limit" \
 ## 上线验收
 
 - 自建镜像构建成功，账号配置没有进入镜像。
-- 深色桌面、任务栏、图标和壁纸正常，中文无乱码。
+- 深色桌面、任务栏、图标和壁纸正常，中文无乱码；桌面菜单、文件对话框和网页客户端设置均为中文。
+- `date` 与任务栏时钟为北京时间（或设置的 TZ），用访问端输入法能在 115 搜索框输入中文。
 - 本机或 SSH 连接正常，未授权网络无法直连 1150，HTTPS 入口要求认证。
 - 扫码和测试下载成功，宿主机能找到文件。
 - 重建后文件与浏览器配置保留，登录仍受服务端策略影响。

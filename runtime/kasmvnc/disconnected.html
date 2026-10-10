@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>远程会话已断开</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root {
+    --bg-color: #101b29;
+    --card-bg: #182637;
+    --accent-color: #42bda7;
+    --accent-dark: #339584;
+    --text-color: #e9f4f7;
+    --font-family: 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  }
+  body {
+    margin: 0;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: var(--font-family);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+  }
+  .card {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+  }
+  h1 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+  }
+  p {
+    font-size: 1rem;
+    margin-bottom: 1.5rem;
+    color: #afbdce;
+  }
+  .btn {
+    display: inline-block;
+    padding: 0.6rem 1.2rem;
+    background-color: var(--accent-color);
+    color: #0b1520;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: 500;
+  }
+  .btn:hover {
+    background-color: var(--accent-dark);
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>远程会话已断开</h1>
+    <p>远程画面连接已结束。只要容器仍在运行，115 浏览器和下载任务不受影响。</p>
+    <a class="btn" href="/">重新连接</a>
+  </div>
+</body>
+</html>

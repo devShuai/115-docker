@@ -13,6 +13,8 @@ export REMOTE_USER="${REMOTE_USER:-115}"
 export VNC_FPS="${VNC_FPS:-30}"
 export KASM_THREADS="${KASM_THREADS:-2}"
 export KASM_WEBP_BUDGET="${KASM_WEBP_BUDGET:-0}"
+# Container UIs may pass an empty TZ, which glibc would treat as UTC.
+export TZ="${TZ:-Asia/Shanghai}"
 
 case "$REMOTE_BACKEND" in
   kasm)
@@ -36,6 +38,9 @@ esac
   echo 'KASM_WEBP_BUDGET must be between 0 and 100.' >&2; exit 1;
 }
 [[ "$DISPLAY" =~ ^:[0-9]+$ ]] || { echo 'Invalid DISPLAY.' >&2; exit 1; }
+[[ "$TZ" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*$ && -f "/usr/share/zoneinfo/$TZ" ]] || {
+  echo 'TZ must name an IANA time zone such as Asia/Shanghai.' >&2; exit 1;
+}
 for size in "$DISPLAY_WIDTH" "$DISPLAY_HEIGHT"; do
   [[ "$size" =~ ^[1-9][0-9]{2,3}$ ]] && (( 10#$size <= 8192 )) || {
     echo 'Initial display dimensions must be between 100 and 8192.' >&2; exit 1;

@@ -1,7 +1,10 @@
+from html.parser import HTMLParser
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -17,9 +20,66 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("configure", ROOT / "runtime/configure.py")
 configure = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(configure)
+spec = importlib.util.spec_from_file_location("localize", ROOT / "runtime/web/localize.py")
+localize = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(localize)
 BASH = os.environ.get("TEST_BASH", shutil.which("bash"))
 version = subprocess.check_output([BASH, "-c", "printf '%s' \"$BASH_VERSION\""], text=True)
 MODERN_BASH = tuple(int(v) for v in version.split(".")[:2]) >= (4, 3)
+KASM_DEB = ROOT / "vendor/kasmvncserver-trixie-1.5.0-amd64.deb"
+KASM_WEB = ROOT / "vendor/kasmvnc-web-475ecfa53565.tar.gz"
+
+
+def deb_member(path, member):
+    """Read one file from a .deb (an ar archive holding data.tar.xz)."""
+    data = path.read_bytes()
+    offset = 8
+    while offset < len(data):
+        header = data[offset:offset + 60]
+        size = int(header[48:58])
+        if header[:16].decode().strip().rstrip("/").startswith("data.tar"):
+            body = data[offset + 60:offset + 60 + size]
+            with tarfile.open(fileobj=io.BytesIO(body)) as archive:
+                return archive.extractfile(member).read().decode()
+        offset += 60 + size + (size & 1)
+    raise FileNotFoundError(member)
+
+
+class VisibleStrings(HTMLParser):
+    """Strings that the web client's l10n.translateDOM() looks up."""
+    ATTRIBUTES = {"title": None, "alt": {"area", "img", "input"},
+                  "placeholder": {"input", "textarea"},
+                  "label": {"menuitem", "menu", "optgroup", "option", "track"}}
+    VOID = {"input", "img", "meta", "link", "br", "hr", "source", "area"}
+
+    def __init__(self):
+        super().__init__()
+        self.strings, self.stack, self.in_body, self.code = set(), [], False, 0
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        self.in_body = self.in_body or tag == "body"
+        self.code += tag in ("script", "style")
+        parent = self.stack[-1][1] if self.stack else True
+        enabled = {"no": False, "": True, "yes": True}.get(attrs.get("translate"), parent)
+        if tag not in self.VOID:
+            self.stack.append((tag, enabled))
+        if self.in_body and enabled and not self.code:
+            for name, tags in self.ATTRIBUTES.items():
+                if attrs.get(name) and (tags is None or tag in tags):
+                    self.strings.add(attrs[name].strip())
+            if tag == "input" and attrs.get("type") in ("reset", "button", "submit") and attrs.get("value"):
+                self.strings.add(attrs["value"].strip())
+
+    def handle_endtag(self, tag):
+        self.code -= tag in ("script", "style")
+        while self.stack and self.stack.pop()[0] != tag:
+            pass
+
+    def handle_data(self, data):
+        enabled = all(flag for _, flag in self.stack)
+        if self.in_body and enabled and not self.code and data.strip():
+            self.strings.add(data.strip())
 
 
 class ConfigurationTests(unittest.TestCase):
@@ -115,6 +175,32 @@ class ConfigurationTests(unittest.TestCase):
                                 env=environment, capture_output=True, text=True, timeout=5)
         self.assertEqual(json.loads(result.stdout)["mode"], 0o700)
 
+    def test_time_zone_defaults_to_shanghai_and_rejects_unknown_names(self):
+        mock_bin = self.directory / "bin"
+        mock_bin.mkdir()
+        runner = mock_bin / "dbus-run-session"
+        runner.write_text("#!" + sys.executable + "\nimport os\nprint(os.environ['TZ'])\n")
+        runner.chmod(0o755)
+        base = {key: value for key, value in os.environ.items() if key != "TZ"}
+        base.update(self.environment, PASSWORD="Check123",
+                    PATH=str(mock_bin) + os.pathsep + os.environ["PATH"])
+
+        def entrypoint(**values):
+            return subprocess.run([BASH, str(ROOT / "runtime/entrypoint.sh")], env={**base, **values},
+                                  capture_output=True, text=True, timeout=5)
+
+        # Container UIs may omit TZ or pass it empty; both must not become UTC.
+        for values, expected in (({}, "Asia/Shanghai"), ({"TZ": ""}, "Asia/Shanghai"), ({"TZ": "UTC"}, "UTC")):
+            result = entrypoint(**values)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), expected)
+        shutil.rmtree(self.run)
+        for value in ("../../etc/passwd", "Asia/Nowhere", "Asia/Shanghai\n", "/etc/localtime"):
+            result = entrypoint(TZ=value)
+            self.assertNotEqual(result.returncode, 0, value)
+            self.assertIn("IANA time zone", result.stderr)
+            self.assertFalse(self.run.exists())
+
     def test_vendored_novnc_supports_mandatory_resize(self):
         mandatory = json.loads((ROOT / "runtime/novnc/mandatory.json").read_text())
         self.assertEqual(mandatory["resize"], "remote")
@@ -130,6 +216,52 @@ class ConfigurationTests(unittest.TestCase):
             ET.parse(ROOT / "rootfs/opt/.config/openbox" / name)
         self.assertTrue((ROOT / "rootfs/usr/share/themes/115Dark/openbox-3/themerc").is_file())
         ET.parse(ROOT / "rootfs/usr/share/backgrounds/115/desktop.svg")
+
+
+class LocalizationTests(unittest.TestCase):
+    # Technical names that the client shows unchanged in every language.
+    UNTRANSLATED = {"Canvas2D", "WebGL", "Ctrl+Shift+"}
+
+    def test_web_clients_load_chinese_defaults_first(self):
+        with tarfile.open(ROOT / "vendor/novnc-1.6.0.tar.gz") as archive:
+            novnc = archive.extractfile("noVNC-1.6.0/vnc.html").read().decode()
+        kasm = deb_member(KASM_DEB, "./usr/share/kasmvnc/www/vnc.html")
+        for name, page in (("noVNC", novnc), ("KasmVNC", kasm)):
+            result = localize.localize(page)
+            self.assertEqual(result.count(localize.MARKER), 1, name)
+            # Classic scripts run before the clients' deferred module scripts.
+            self.assertEqual(result.index("<script"), result.index(localize.MARKER), name)
+            self.assertIn('<html lang="zh-CN"', result, name)
+            self.assertEqual(localize.localize(result), result, name)
+        with self.assertRaises(ValueError):
+            localize.localize('<html lang="en"><head></head><body><head></head></body></html>')
+        script = (ROOT / "runtime/web/zh-default.js").read_text()
+        self.assertIn('"zh-CN"', script)
+        self.assertIn('getItem("enable_ime") === null', script)
+
+    def test_kasm_chinese_translation_covers_visible_ui(self):
+        with tarfile.open(KASM_WEB) as archive:
+            root = archive.getnames()[0].split("/")[0]
+            page = archive.extractfile(f"{root}/index.html").read().decode()
+            ui = archive.extractfile(f"{root}/app/ui.js").read().decode()
+            stock = json.load(archive.extractfile(f"{root}/app/locale/zh_CN.json"))
+        parser = VisibleStrings()
+        parser.feed(page)
+        wanted = {text for text in parser.strings | set(re.findall(r'\b_\("([^"]+)"\)', ui))
+                  if re.search(r"[A-Za-z]{2}", text)}
+        overlay = json.loads((ROOT / "runtime/kasmvnc/zh_CN.json").read_text())
+        self.assertLessEqual(set(stock), set(overlay), "the overlay must keep every upstream entry")
+        self.assertEqual({text for text in wanted if text not in overlay}, self.UNTRANSLATED)
+        for source, target in overlay.items():
+            self.assertTrue(target.strip(), source)
+            self.assertNotIn("「", target, source)
+        self.assertIn("IME Input Mode", wanted)
+
+    def test_disconnected_page_is_chinese_and_reconnects(self):
+        page = (ROOT / "runtime/kasmvnc/disconnected.html").read_text()
+        self.assertIn('<html lang="zh-CN">', page)
+        self.assertIn('href="/"', page)
+        self.assertIsNone(re.search(r">[^<]*[A-Za-z]{4,}[^<]*<", page.split("</style>")[1]))
 
 
 @unittest.skipUnless(MODERN_BASH, "process management needs Bash 4.3 or later")

@@ -6,6 +6,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:115 \
     LANG=zh_CN.UTF-8 \
     LC_ALL=zh_CN.UTF-8 \
+    LANGUAGE=zh_CN:zh \
+    TZ=Asia/Shanghai \
     XDG_CONFIG_HOME=/opt/.config \
     XDG_CACHE_HOME=/opt/.cache \
     XDG_RUNTIME_DIR=/run/115 \
@@ -14,9 +16,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # All application and Debian runtime packages are supplied by this project.
 # BuildKit bind mounts keep the 115 installer out of the final image layers.
+# The slim base drops every translation catalog; keep Simplified Chinese ones
+# so desktop menus and GTK dialogs follow the zh_CN locale.
 RUN --network=none --mount=type=bind,source=vendor,target=/vendor,readonly \
     test "$TARGETARCH" = amd64 \
     && cd /vendor && sha256sum -c SHA256SUMS \
+    && echo 'path-include /usr/share/locale/zh_CN/*' >/etc/dpkg/dpkg.cfg.d/zz-115-zh-locale \
     && mkdir -p /tmp/offline-apt/sources /tmp/offline-apt/lists \
     && apt-get install -y --no-install-recommends \
        -o Dir::Etc::sourcelist=/dev/null -o Dir::Etc::sourceparts=/tmp/offline-apt/sources \
@@ -37,6 +42,12 @@ RUN mkdir -p /etc/115 /opt/Downloads /opt/.cache /opt/.config \
     && cp /opt/115/index.html /usr/local/share/noVNC/index.html \
     && cp /opt/115/index.html /usr/share/kasmvnc/www/index.html \
     && cp /opt/115/novnc/*.json /usr/local/share/noVNC/ \
+    && cp /opt/115/web/zh-default.js /usr/local/share/noVNC/ \
+    && cp /opt/115/web/zh-default.js /opt/115/kasmvnc/disconnected.html /usr/share/kasmvnc/www/ \
+    && cp /opt/115/kasmvnc/zh_CN.json /usr/share/kasmvnc/www/app/locale/zh_CN.json \
+    && python3 /opt/115/web/localize.py /usr/local/share/noVNC/vnc.html /usr/share/kasmvnc/www/vnc.html \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo Asia/Shanghai >/etc/timezone \
     && ln -sf /opt/115/115.sh /usr/local/115Browser/115.sh \
     && rsvg-convert -w 1920 -h 1080 /usr/share/backgrounds/115/desktop.svg \
        -o /usr/share/backgrounds/115/desktop.png \
@@ -44,7 +55,8 @@ RUN mkdir -p /etc/115 /opt/Downloads /opt/.cache /opt/.config \
     && test -x /usr/bin/Xtigervnc \
     && test -x /usr/bin/Xkasmvnc \
     && test -f /usr/share/kasmvnc/www/vnc.html \
-    && test -f /usr/local/share/noVNC/vnc.html
+    && test -f /usr/local/share/noVNC/vnc.html \
+    && test -f /usr/share/locale/zh_CN/LC_MESSAGES/gtk30.mo
 
 EXPOSE 1150
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
