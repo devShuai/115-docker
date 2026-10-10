@@ -54,5 +54,11 @@
     watchRatio();
     window.addEventListener("pageshow", checkRatio);
     document.addEventListener("visibilitychange", checkRatio);
+    // Some browser/display changes update devicePixelRatio without firing a
+    // media-query change. Read one number per second while the page is visible;
+    // dispatch resize only when that number actually changes.
+    window.setInterval(function () {
+      if (!document.hidden) checkRatio();
+    }, 1000);
   }
 })();
