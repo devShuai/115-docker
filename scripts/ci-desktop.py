@@ -142,6 +142,7 @@ def run_backend(backend):
     env = {**os.environ, 'PASSWORD': PASSWORD, 'REMOTE_USER': '115', 'REMOTE_BACKEND': backend,
            'AUTO_START': 'true', 'ENABLE_COOKIE_EXTENSION': 'false', 'DISPLAY': ':115',
            'DISPLAY_WIDTH': '1600', 'DISPLAY_HEIGHT': '900', 'VNC_FPS': '30', 'KASM_THREADS': '2',
+           'KASM_WEBP_BUDGET': '0',
            'PROFILE_DIR_IN_CONTAINER': str(profile/'server'), 'RUNTIME_DIR': '/run/115'}
     profile.mkdir(parents=True)
     launcher = profile/'launch.sh'
@@ -303,6 +304,7 @@ def main():
         assert result.returncode != 0 and 'PASSWORD must' in result.stderr
         assert 'dbus' not in result.stderr, 'Password validated after starting D-Bus'
     report = dict(scene='vendored local fixture, 1600x900, target 30 FPS, serial fresh profiles',
+                  kasm_settings=dict(frame_rate=30,rect_threads=2,webp_encoding_budget_percent=0,dynamic_quality=[6,8]),
                   machine=os.uname().machine, available_cpu_count=len(os.sched_getaffinity(0)),
                   cpu_unit='100% = one core; server process tree excludes headless web client',
                   transfer_unit='received WebSocket payload; excludes HTTP, TLS and TCP overhead',

@@ -25,6 +25,7 @@ services:
       REMOTE_USER: ${REMOTE_USER:-115}
       VNC_FPS: ${VNC_FPS:-30}
       KASM_THREADS: ${KASM_THREADS:-2}
+      KASM_WEBP_BUDGET: ${KASM_WEBP_BUDGET:-0}
       PASSWORD: ${VNC_PASSWORD:?Set VNC_PASSWORD in .env; see .env.example for backend password rules}
       AUTO_START: ${AUTO_START:-true}
       DISPLAY_WIDTH: ${DISPLAY_WIDTH:-1600}

@@ -103,6 +103,8 @@ chmod 750 data/downloads
 
 编辑 `.env`：默认 `REMOTE_BACKEND=kasm`、`REMOTE_USER=115`，`VNC_PASSWORD` 使用随机的 **8～128 位 ASCII 字母数字**，建议至少 16 位。需要原后端回退时，使用恰好 8 位字母数字。启动入口在建立 D-Bus 会话前校验密码和配置。`VNC_FPS=30` 控制刷新上限，`KASM_THREADS=2` 控制矩形编码线程；默认走 JPEG/WebP 图像传输，不启用 GPU 或 H.264/H.265/AV1 编码。[KasmVNC 配置](https://docs.kasmvnc.com/docs/configuration/)、[TigerVNC 密码说明](https://tigervnc.org/doc/vncpasswd.html)
 
+`KASM_WEBP_BUDGET=0` 优先快速回退到编码开销更低的 JPEG，适合 NAS 软件编码；仍可能编码少量 WebP。取值 0～100 表示每帧允许 WebP 编码使用的时间比例。带宽较紧张且 CPU 有余量时可尝试 30，重新测量 CPU 和传输量。服务端动态画质范围为 6～8，静态文字优先保留清晰度。
+
 默认 `IMAGE_115=115-browser-local:36.0.1` 是本地镜像名称，Compose 不拉取该名称的远程镜像。保留 `BIND_IP=127.0.0.1`。如需使用已有磁盘，将 DOWNLOAD_DIR 改为目标主机绝对路径，例如 `/volume1/downloads/115`，预先创建目录并允许容器写入。PROFILE_DIR 同样支持绝对路径。
 
 ```bash

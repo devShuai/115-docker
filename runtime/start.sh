@@ -46,6 +46,7 @@ if [[ "$REMOTE_BACKEND" == kasm ]]; then
     -KasmPasswordFile "$RUNTIME_DIR/passwd" -SecurityTypes None \
     -AcceptSetDesktopSize=1 -AlwaysShared -desktop '115 Desktop' \
     -FrameRate "$VNC_FPS" -RectThreads "$KASM_THREADS" \
+    -webpEncodingTime "$KASM_WEBP_BUDGET" \
     -PreferBandwidth 1 -DynamicQualityMin 6 -DynamicQualityMax 8 \
     -IgnoreClientSettingsKasm 1 -PublicIP 127.0.0.1
 else

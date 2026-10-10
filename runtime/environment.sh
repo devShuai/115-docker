@@ -12,6 +12,7 @@ export REMOTE_BACKEND="${REMOTE_BACKEND:-kasm}"
 export REMOTE_USER="${REMOTE_USER:-115}"
 export VNC_FPS="${VNC_FPS:-30}"
 export KASM_THREADS="${KASM_THREADS:-2}"
+export KASM_WEBP_BUDGET="${KASM_WEBP_BUDGET:-0}"
 
 case "$REMOTE_BACKEND" in
   kasm)
@@ -30,6 +31,9 @@ esac
 }
 [[ "$KASM_THREADS" =~ ^[1-9][0-9]?$ ]] && (( 10#$KASM_THREADS <= 16 )) || {
   echo 'KASM_THREADS must be between 1 and 16.' >&2; exit 1;
+}
+[[ "$KASM_WEBP_BUDGET" =~ ^[0-9]{1,3}$ ]] && (( 10#$KASM_WEBP_BUDGET <= 100 )) || {
+  echo 'KASM_WEBP_BUDGET must be between 0 and 100.' >&2; exit 1;
 }
 [[ "$DISPLAY" =~ ^:[0-9]+$ ]] || { echo 'Invalid DISPLAY.' >&2; exit 1; }
 for size in "$DISPLAY_WIDTH" "$DISPLAY_HEIGHT"; do
