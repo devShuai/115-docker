@@ -3,7 +3,12 @@ set -euo pipefail
 umask 077
 
 source "$(dirname -- "${BASH_SOURCE[0]}")/environment.sh"
-printf '%s\n' "$PASSWORD" | tigervncpasswd -f >"$RUNTIME_DIR/passwd"
+if [[ "$REMOTE_BACKEND" == kasm ]]; then
+  printf '%s\n%s\n' "$PASSWORD" "$PASSWORD" | \
+    kasmvncpasswd -u "$REMOTE_USER" -r -w -o "$RUNTIME_DIR/passwd"
+else
+  printf '%s\n' "$PASSWORD" | tigervncpasswd -f >"$RUNTIME_DIR/passwd"
+fi
 chmod 600 "$RUNTIME_DIR/passwd"
 unset PASSWORD
 python3 "${CONFIGURE_SCRIPT:-/opt/115/configure.py}"
@@ -31,17 +36,31 @@ spawn_critical() {
 }
 
 vnc_port=$((5900 + 10#${DISPLAY#:}))
-spawn_critical TigerVNC Xtigervnc "$DISPLAY" \
-  -geometry "${DISPLAY_WIDTH}x${DISPLAY_HEIGHT}" -depth 24 \
-  -rfbport "$vnc_port" -localhost -nolisten tcp \
-  -SecurityTypes VncAuth -PasswordFile "$RUNTIME_DIR/passwd" \
-  -AcceptSetDesktopSize=1 -AlwaysShared -desktop '115 Desktop'
+if [[ "$REMOTE_BACKEND" == kasm ]]; then
+  # The native web endpoint replaces the separate Python Websockify relay.
+  # Basic authentication remains required. Publish through HTTPS or an SSH tunnel.
+  spawn_critical KasmVNC Xkasmvnc "$DISPLAY" \
+    -geometry "${DISPLAY_WIDTH}x${DISPLAY_HEIGHT}" -depth 24 -nolisten tcp \
+    -rfbport -1 -websocketPort 1150 -interface 0.0.0.0 \
+    -httpd /usr/share/kasmvnc/www -sslOnly 0 \
+    -KasmPasswordFile "$RUNTIME_DIR/passwd" -SecurityTypes None \
+    -AcceptSetDesktopSize=1 -AlwaysShared -desktop '115 Desktop' \
+    -FrameRate "$VNC_FPS" -RectThreads "$KASM_THREADS" \
+    -PreferBandwidth 1 -DynamicQualityMin 6 -DynamicQualityMax 8 \
+    -IgnoreClientSettingsKasm 1 -PublicIP 127.0.0.1
+else
+  spawn_critical TigerVNC Xtigervnc "$DISPLAY" \
+    -geometry "${DISPLAY_WIDTH}x${DISPLAY_HEIGHT}" -depth 24 \
+    -rfbport "$vnc_port" -localhost -nolisten tcp \
+    -SecurityTypes VncAuth -PasswordFile "$RUNTIME_DIR/passwd" \
+    -AcceptSetDesktopSize=1 -AlwaysShared -FrameRate "$VNC_FPS" -desktop '115 Desktop'
+fi
 
 ready=false
 for (( attempt=0; attempt<100; attempt++ )); do
   if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then ready=true; break; fi
   kill -0 "${critical_pids[0]}" 2>/dev/null || {
-    echo 'TigerVNC exited during startup.' >&2; exit 1;
+    echo 'Display server exited during startup.' >&2; exit 1;
   }
   sleep 0.2
 done
@@ -50,8 +69,10 @@ done
 spawn_critical Openbox openbox --config-file "${OPENBOX_CONFIG:-/opt/.config/openbox/rc.xml}"
 spawn_critical Desktop pcmanfm --desktop --profile default
 spawn_critical Panel tint2 -c "${TINT2_CONFIG:-/opt/.config/tint2/tint2rc}"
-spawn_critical noVNC "${WEBSOCKIFY_RUN:-/usr/local/lib/websockify/run}" \
-  --web "${NO_VNC_HOME:-/usr/local/share/noVNC}" 1150 "127.0.0.1:$vnc_port"
+if [[ "$REMOTE_BACKEND" == legacy ]]; then
+  spawn_critical noVNC "${WEBSOCKIFY_RUN:-/usr/local/lib/websockify/run}" \
+    --web "${NO_VNC_HOME:-/usr/local/share/noVNC}" 1150 "127.0.0.1:$vnc_port"
+fi
 
 if [[ "$AUTO_START" == true ]]; then
   "${BROWSER_LAUNCHER:-/opt/115/115.sh}" &

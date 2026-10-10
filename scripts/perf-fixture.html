@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>115 Docker remote desktop benchmark</title>
+<style>
+html,body{margin:0;background:#142538;color:#e7f0f9;font:18px sans-serif;overflow:hidden}
+header{padding:24px;background:#20394e}strong{color:#63d2b0}canvas{display:block;width:100vw;height:calc(100vh - 74px)}
+</style>
+<header><strong>115 Docker</strong> · 固定本地测试画面 · <span id="state">静态</span></header>
+<canvas id="scene"></canvas>
+<script>
+const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');
+let dynamic=false,frame=0,drawn=0,last=0;
+window.benchmark={setDynamic(value){dynamic=value;document.querySelector('#state').textContent=value?'30 FPS 动画':'静态';draw();},get frames(){return drawn;}};
+function draw(){
+ if(canvas.width!==innerWidth)canvas.width=innerWidth;
+ if(canvas.height!==innerHeight-74)canvas.height=innerHeight-74;
+ ctx.fillStyle='#142538';ctx.fillRect(0,0,canvas.width,canvas.height);
+ for(let i=0;i<72;i++){
+  const x=(i%12)*(canvas.width/12),y=Math.floor(i/12)*100;
+  ctx.fillStyle=`hsl(${(i*13+frame)%360} 45% 38%)`;
+  ctx.fillRect(x+12,y+15,canvas.width/12-24,76);
+  ctx.fillStyle='#ffffff';ctx.font='16px sans-serif';ctx.fillText(`文件 ${i+1} · 115`,x+20,y+58);
+ }
+ drawn++;
+}
+function tick(t){const step=1000/30;if(dynamic&&t-last>=step){frame=(frame+3)%360;draw();last=t-(t-last)%step;}requestAnimationFrame(tick);}
+onresize=draw;draw();requestAnimationFrame(tick);
+</script>

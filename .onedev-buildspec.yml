@@ -21,7 +21,7 @@ jobs:
         python3 scripts/vendor.py
         bash -n runtime/*.sh scripts/ci-smoke.sh
         python3 -m unittest discover -s tests -v
-        python3 -m py_compile scripts/ci-rfb.py
+        python3 -m py_compile scripts/ci-rfb.py scripts/ci-desktop.py scripts/cdp.py
     runAs: '0:0'
     useTTY: false
     condition: SUCCESSFUL
@@ -55,7 +55,7 @@ jobs:
     moreOptions: --label org.opencontainers.image.source=https://one.devshuai.com/shuai-toys/115-docker --label org.opencontainers.image.revision=@commit_hash@
     condition: SUCCESSFUL
   - type: CommandStep
-    name: verify published desktop and remote resize
+    name: compare both backends and verify actual browser resize
     runInContainer: true
     image: registry.devshuai.com/shuai-repo/115-docker:build-@build_number@
     registryLogins:
@@ -65,10 +65,14 @@ jobs:
     interpreter:
       type: PosixInterpreter
       shell: bash
-      commands: bash scripts/ci-smoke.sh
+      commands: CI_BACKENDS=legacy,kasm bash scripts/ci-smoke.sh
     runAs: '0:0'
     useTTY: false
     condition: SUCCESSFUL
+  - type: PublishArtifactStep
+    name: publish performance results and desktop screenshots
+    artifacts: '.ci-artifacts/**'
+    condition: ALWAYS
   - type: RunImagetoolsStep
     name: promote verified image to latest
     arguments: create -t registry.devshuai.com/shuai-repo/115-docker:latest registry.devshuai.com/shuai-repo/115-docker:build-@build_number@

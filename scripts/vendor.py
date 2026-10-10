@@ -25,6 +25,7 @@ def main():
     for asset in manifest["assets"]:
         target = ROOT / "vendor" / asset["name"]
         if not target.exists() and args.fetch:
+            target.parent.mkdir(parents=True, exist_ok=True)
             temporary = target.with_suffix(target.suffix + ".part")
             try:
                 request = urllib.request.Request(asset["url"], headers={"User-Agent": "Mozilla/5.0"})
@@ -38,7 +39,7 @@ def main():
                 temporary.unlink(missing_ok=True)
         if not target.is_file() or checksum(target) != asset["sha256"]:
             raise SystemExit("Missing or invalid archive: " + asset["name"])
-        print("Verified " + asset["name"])
+    print(f"Verified {len(manifest["assets"])} pinned archives and packages")
     expected = "".join(asset["sha256"] + "  " + asset["name"] + "\n"
                        for asset in manifest["assets"])
     if (ROOT / "vendor/SHA256SUMS").read_text() != expected:

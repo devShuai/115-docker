@@ -9,7 +9,9 @@
 | 115 浏览器 Linux amd64 安装包 | 36.0.1 | [115 官方下载](https://down.115.com/client/115pc/lin/115br_v36.0.1.deb)，闭源软件，适用 115 的许可与使用条款 |
 | noVNC | 1.6.0 | [noVNC](https://github.com/novnc/noVNC/tree/v1.6.0)，主要为 MPL 2.0，具体以归档内 LICENSE 文件为准 |
 | Websockify | 0.13.0 | [Websockify](https://github.com/novnc/websockify/tree/v0.13.0)，LGPL 3.0，具体以归档内许可证文件为准 |
-| Debian 和桌面系统包 | trixie 软件源版本 | [Debian](https://www.debian.org/)，各组件许可保存在镜像的 `/usr/share/doc/组件/copyright` |
+| KasmVNC | 1.5.0 | [KasmVNC](https://github.com/kasmtech/KasmVNC/tree/v1.5.0)，GPL 2.0；官方 trixie amd64 安装包和对应完整服务端源码归档均在 vendor |
+| KasmVNC 网页客户端 | 475ecfa5356579ef222983c7ce4619a7576a3bce | [Kasm noVNC](https://github.com/kasmtech/noVNC/tree/475ecfa5356579ef222983c7ce4619a7576a3bce)，以归档内 LICENSE 为准；这是 KasmVNC 1.5.0 固定的 kasmweb 子模块提交 |
+| Debian 和桌面系统包 | manifest 中逐包锁定版本 | [Debian](https://www.debian.org/)，283 个传递依赖 deb 已保存在 vendor/debian，各组件许可保存在镜像的 `/usr/share/doc/组件/copyright` |
 | Papirus 图标 | Debian 软件源版本 | [Papirus](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)，GPL 3.0，以系统包版权信息为准 |
 
-noVNC 和 Websockify 的完整归档及许可证保留在 `vendor/`，构建时保留解压后的源码与许可证。115 安装包为本地构建准备；若要公开分发工程或镜像，先确认 115 安装包的分发许可。基础 Debian 镜像与 apt 系统包在构建时获取，当前工程不是完整的离线操作系统镜像仓库。
+noVNC、Websockify、KasmVNC 及对应 kasmweb 客户端源码与许可证保留在 `vendor/`。KasmVNC 的安装包包含编译完成的网页资源，不需要 npm 安装。115 安装包为本地构建准备；若要公开分发工程或镜像，先确认 115 安装包的分发许可。Debian 基础镜像固定 OCI digest，仍需预先拉取或缓存；系统和应用安装步骤在禁用网络时从当前工程完成。

@@ -81,7 +81,7 @@ class ConfigurationTests(unittest.TestCase):
         for value in ("", "123456", "morethan8", "1234\n567"):
             for script in ("start.sh", "entrypoint.sh"):
                 result = subprocess.run([BASH, str(ROOT / "runtime" / script)],
-                                        env={**os.environ, **self.environment, "PASSWORD": value},
+                                        env={**os.environ, **self.environment, "REMOTE_BACKEND": "legacy", "PASSWORD": value},
                                         capture_output=True, text=True, timeout=5)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("exactly 8", result.stderr)
@@ -152,15 +152,15 @@ class SupervisorTests(unittest.TestCase):
             "while True: time.sleep(0.05)\n"
         )
         blocker.chmod(0o755)
-        for command in ("Xtigervnc", "openbox", "pcmanfm", "tint2"):
+        for command in ("Xtigervnc", "Xkasmvnc", "openbox", "pcmanfm", "tint2"):
             (self.bin / command).symlink_to(blocker)
-        for command, source in {"tigervncpasswd": "#!/bin/sh\ncat\n", "xdpyinfo": "#!/bin/sh\nexit 0\n"}.items():
+        for command, source in {"tigervncpasswd": "#!/bin/sh\ncat\n", "kasmvncpasswd": '#!/bin/sh\ncat > "$6"\n', "xdpyinfo": "#!/bin/sh\nexit 0\n"}.items():
             path = self.bin / command
             path.write_text(source)
             path.chmod(0o755)
         self.environment = {
             **os.environ, "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
-            "PASSWORD": "Check123", "DISPLAY": ":9915", "AUTO_START": "false",
+            "PASSWORD": "Check123", "REMOTE_BACKEND": "legacy", "DISPLAY": ":9915", "AUTO_START": "false",
             "ENABLE_COOKIE_EXTENSION": "false", "PID_DIRECTORY": str(self.directory),
             "RUNTIME_DIR": str(self.directory / "run"),
             "PROFILE_DIR_IN_CONTAINER": str(self.directory / "profile"),
@@ -197,6 +197,14 @@ class SupervisorTests(unittest.TestCase):
         process.send_signal(signal.SIGTERM)
         output, _ = process.communicate(timeout=8)
         self.assertEqual(process.returncode, 0, output)
+        self.assert_children_stopped()
+
+    def test_kasm_does_not_start_websockify_and_cleans_up(self):
+        process = self.launch(REMOTE_BACKEND="kasm", FAIL_SERVICE="openbox")
+        output, _ = process.communicate(timeout=8)
+        self.assertEqual(process.returncode, 1, output)
+        self.assertIn("Started KasmVNC", output)
+        self.assertNotIn("Started noVNC", output)
         self.assert_children_stopped()
 
 

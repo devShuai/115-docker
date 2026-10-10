@@ -1,0 +1,5 @@
+# Use with compose.yaml (and compose.registry.yaml when pulling a CI image).
+services:
+  browser115:
+    environment:
+      REMOTE_BACKEND: legacy

@@ -10,3 +10,5 @@ scripts
 **/*.pyc
 vendor/*.part
 .DS_Store
+.ci-artifacts
+vendor/**/*.part
