@@ -103,17 +103,20 @@ class ConfigurationTests(unittest.TestCase):
         self.execute()
         path = self.profile / "Default/Preferences"
         self.assertEqual(json.loads(path.read_text())["download"]["default_directory"], "/opt/Downloads")
+        self.assertFalse(json.loads(path.read_text())["bookmark_bar"]["show_on_all_tabs"])
         self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         self.assertFalse((self.run / "115Cookie").exists())
 
     def test_existing_preferences_and_download_choice_are_preserved(self):
         path = self.profile / "Default/Preferences"
         path.parent.mkdir(parents=True)
-        path.write_text(json.dumps({"download": {"default_directory": "/chosen"}, "custom": [1, 2]}))
+        path.write_text(json.dumps({"download": {"default_directory": "/chosen"},
+                                    "bookmark_bar": {"show_on_all_tabs": True}, "custom": [1, 2]}))
         self.execute()
         content = json.loads(path.read_text())
         self.assertEqual(content["download"]["default_directory"], "/chosen")
         self.assertEqual(content["custom"], [1, 2])
+        self.assertTrue(content["bookmark_bar"]["show_on_all_tabs"])
 
     def test_invalid_preferences_are_not_overwritten(self):
         path = self.profile / "Default/Preferences"

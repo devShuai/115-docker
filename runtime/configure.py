@@ -20,6 +20,8 @@ def configure():
     downloads = content.setdefault("download", {})
     downloads.setdefault("default_directory", "/opt/Downloads")
     downloads.setdefault("prompt_for_download", False)
+    # Hide the bar by default, while retaining a user's later choice to show it.
+    content.setdefault("bookmark_bar", {}).setdefault("show_on_all_tabs", False)
     write_private_json(preferences, content)
 
     target = Path(os.environ.get("RUNTIME_DIR", "/run/115")) / "115Cookie"

@@ -324,6 +324,8 @@ docker compose build
 
 Compose 使用 bridge 网络、no-new-privileges 和默认 seccomp。浏览器保留证书校验与默认站点隔离，当前仍采用 root 和 --no-sandbox，供可信人员操作专用桌面。不挂载 Docker socket、宿主机根目录或额外敏感目录。
 
+启动参数使用 `--test-type` 跳过 Chromium 的启动提示条，消除 `--no-sandbox` 的“不受支持的命令行标记”提示；这不会启用浏览器 sandbox。书签栏默认隐藏，已有 profile 中用户自行设置的显示状态继续保留，可在浏览器中按 `Ctrl+Shift+B` 切换。[Chromium 125 启动提示处理源码](https://github.com/chromium/chromium/blob/125.0.6422.60/chrome/browser/ui/startup/infobar_utils.cc)
+
 只有日志显示确切 seccomp 兼容问题时才执行：
 
 ```bash

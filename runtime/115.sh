@@ -2,7 +2,8 @@
 set -euo pipefail
 cd /usr/local/115Browser
 
-# Root-mode Chromium still requires --no-sandbox.
+# Root-mode Chromium still requires --no-sandbox. Chromium 125's --test-type
+# skips startup infobars, including the unsupported-command-line warning.
 extra_args=()
 if [[ "${ENABLE_COOKIE_EXTENSION:-false}" == "true" ]]; then
   extra_args+=("--load-extension=${RUNTIME_DIR:-/run/115}/115Cookie")
@@ -12,6 +13,7 @@ fi
 exec /usr/local/115Browser/115Browser \
   "--user-data-dir=${PROFILE_DIR_IN_CONTAINER:-/etc/115}" \
   --no-sandbox \
+  --test-type \
   --no-first-run \
   --no-default-browser-check \
   --start-maximized \
