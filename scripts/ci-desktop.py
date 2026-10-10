@@ -149,14 +149,25 @@ def verify_scaling(client, backend, env):
         assert client.evaluate('devicePixelRatio') == ratio
         left,top,cw,ch = canvas['rect']
         px,py = left+cw*.375, top+ch*.5
+        # A connected framebuffer can appear before the connection overlay has
+        # finished fading. Wait until the canvas can actually receive input.
+        def input_ready():
+            client.pump(.1)
+            return client.evaluate(f"document.elementFromPoint({px},{py})?.tagName === 'CANVAS'")
+        wait_for(input_ready, f'{backend} canvas input ready', seconds=10)
         client.call('Input.dispatchMouseEvent', dict(type='mouseMoved', x=px, y=py))
         target = [int(expected[0]*.375), int(expected[1]*.5)]
+        last_pointer = [None]
         def pointer_matches():
             client.pump(.1)
             position = json.loads(subprocess.check_output(['python3','-c',POINTER_QUERY],env=env,text=True))
+            last_pointer[0] = position
             return position if all(abs(a-b) <= 2 for a,b in zip(position,target)) else None
-        pointer = wait_for(pointer_matches, f'{backend} scaled pointer coordinates', seconds=10)
-        results.append(dict(viewport=[width,height],device_pixel_ratio=ratio,native_resolution=native,desktop=expected,pointer=pointer))
+        try:
+            pointer = wait_for(pointer_matches, f'{backend} scaled pointer coordinates', seconds=10)
+        except RuntimeError as error:
+            raise AssertionError(f'Scaled pointer expected {target}, got {last_pointer[0]}; canvas={canvas}, DPR={ratio}') from error
+        results.append(dict(viewport=[width,height],device_pixel_ratio=ratio,native_resolution=native,desktop=expected,pointer=pointer,input_source='CDP mouse move'))
         print(f'PASS: {backend} scaled viewport DPR {ratio}, native={native}, X11 {expected}, pointer {pointer}',flush=True)
     if backend == 'kasm':
         client.evaluate("(()=>{const el=document.getElementById('noVNC_setting_enable_hidpi');el.checked=false;el.dispatchEvent(new Event('change'));})()")
