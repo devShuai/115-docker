@@ -218,6 +218,33 @@ class Engine:
             time.sleep(2)
         raise RuntimeError('容器未通过健康检查')
 
+    def prepare_saved_container(self, record):
+        # Earlier project images left X lock/socket files in the writable layer.
+        # Backport just the safe startup cleanup to that preserved container;
+        # retain its original entrypoint and all of its desktop implementation.
+        directory = self.record_dir(record)
+        probe = directory / 'entrypoint-probe.sh'
+        self.docker('cp', record['old_id'] + ':/opt/115/entrypoint.sh', str(probe))
+        source = probe.read_text()
+        marker = 'python3 "$script_dir/prepare-display.py"'
+        if marker in source:
+            return
+        anchor = 'source "$script_dir/environment.sh"\n'
+        if source.count(anchor) != 1 or 'exec dbus-run-session -- "$script_dir/start.sh"' not in source:
+            raise RuntimeError('旧容器启动脚本不是已知版本，拒绝自动修改')
+        original = directory / 'entrypoint-before.sh'
+        if not original.exists():
+            shutil.copy2(str(probe), str(original))
+            original.chmod(0o600)
+        patched = directory / 'entrypoint-compatible.sh'
+        patched.write_text(source.replace(anchor, anchor + marker + '\n', 1))
+        patched.chmod(0o755)
+        helper = Path(__file__).resolve().parents[1] / 'runtime/prepare-display.py'
+        self.docker('cp', str(helper), record['old_id'] + ':/opt/115/prepare-display.py')
+        self.docker('cp', str(patched), record['old_id'] + ':/opt/115/entrypoint.sh')
+        record['startup_compatibility_backport'] = True
+        self.save(record)
+
     def update(self, expected):
         old = self.inspect()
         if not old['State']['Running']:
@@ -357,6 +384,7 @@ class Engine:
         if restart == 'on-failure' and policy.get('MaximumRetryCount'):
             restart += ':' + str(policy['MaximumRetryCount'])
         self.docker('update', '--restart=' + restart, old['Id'])
+        self.prepare_saved_container(record)
         self.docker('start', old['Id'])
         manager_old = json.loads((directory / 'manager-before.json').read_text())
         manager = self.manager_path()

@@ -14,9 +14,10 @@ mkdir -p "$app_root/state"
 chmod 700 "$app_root" "$app_root/state"
 stage="$app_root/app-new"
 test ! -e "$stage" || { echo 'Staging directory already exists; inspect before retry.' >&2; exit 1; }
-mkdir -p "$stage/manager" "$stage/scripts"
+mkdir -p "$stage/manager" "$stage/scripts" "$stage/runtime"
 cp "$project_root"/manager/*.py "$project_root"/manager/*.html "$project_root"/manager/*.js "$project_root"/manager/*.css "$stage/manager/"
 cp "$project_root/scripts/check-update.py" "$stage/scripts/"
+cp "$project_root/runtime/prepare-display.py" "$stage/runtime/"
 if [ -n "$config_source" ]; then
   cp "$config_source" "$app_root/config.json.new"
 elif [ ! -f "$app_root/config.json" ]; then

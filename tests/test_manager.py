@@ -30,6 +30,7 @@ class FakeEngine(engine.Engine):
         self.commands = []
         self.fail_health = False
         self.fail_old_health = False
+        self.entrypoints = {'old': '#!/bin/sh\nsource "$script_dir/environment.sh"\nexec dbus-run-session -- "$script_dir/start.sh" "$@"\n'}
         self.containers = {'old': {'Id': 'old', 'Name': '/115-docker', 'Image': OLD,
             'State': {'Running': True, 'Health': {'Status': 'healthy'}},
             'Mounts': [{'Destination': '/etc/115', 'Type': 'bind', 'Source': str(self.profile)}],
@@ -54,6 +55,12 @@ class FakeEngine(engine.Engine):
     def docker(self, *args, **kwargs):
         self.commands.append(args)
         if args[0] == 'pull':
+            return ''
+        if args[0] == 'cp':
+            if ':/' in args[1]:
+                Path(args[2]).write_text(self.entrypoints[args[1].split(':', 1)[0]])
+            elif args[2].endswith('/entrypoint.sh'):
+                self.entrypoints[args[2].split(':', 1)[0]] = Path(args[1]).read_text()
             return ''
         c = self.containers[self.inspect(args[-1] if args[0] in ('start', 'stop', 'update') else args[1])['Id']]
         if args[0] == 'stop': c['State']['Running'] = False
@@ -118,6 +125,8 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual((self.engine.profile / 'preferences').read_text(), 'before')
         self.assertEqual(self.engine.records()[0]['status'], 'rolled_back')
         self.assertEqual(next(self.engine.record_dir(r).glob('profile-after-*/preferences')).read_text(), 'migrated')
+        self.assertIn('prepare-display.py', self.engine.entrypoints['old'])
+        self.assertNotIn('prepare-display.py', (self.engine.record_dir(r) / 'entrypoint-before.sh').read_text())
 
     def test_latest_race_leaves_running_container_untouched(self):
         with self.assertRaisesRegex(ValueError, 'latest 已发生变化'):
