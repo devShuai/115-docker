@@ -218,7 +218,7 @@ docker image tag 115-browser-local:36.0.1 115-browser-local:before-change
 
 1. Harbor 中存在 `shuai-repo` 项目，推送账号拥有该项目 Pull/Push 权限；发布作业还需 Pull 权限才能验收。
 2. OneDev 本项目或父项目的 Settings → Build → Job Secrets 包含 `registry-username` 和 `registry-password`。用户名也通过 Secret 引用，可支持 Harbor robot 账号中的 `$`。两个 Secret 的 Authorization 设为 `on branch "main"`，不要写入 Git 或镜像。[OneDev Secret 文档](https://docs.onedev.io/tutorials/cicd/job-secrets)
-3. 有可运行 amd64 容器的 Server Docker Executor 或 Remote Docker Executor，安装 Docker 和 Buildx，并启用 **Enable Buildx Image Build**。自动发现的执行器默认不允许此步骤。执行器应限制到本项目的可信构建，选择现有合适的执行器；需要固定名称时，在作业里设置 jobExecutor。[OneDev 镜像构建设置](https://docs.onedev.io/tutorials/cicd/build-docker-image)
+3. 有可运行 amd64 容器的 Server Docker Executor 或 Remote Docker Executor，安装 Docker 和 Buildx，并启用 **Enable Buildx Image Build** 和 **Enable Buildx Image Tools**，后者用于验收后更新 latest 及检查 manifest。自动发现的执行器默认不允许这些步骤。具备这两项能力的执行器应限制到本项目 main 上的可信 publish-image 作业；validate 可使用单独的普通 Docker 执行器。选择现有合适的执行器，需要固定名称时在作业里设置 jobExecutor。[OneDev 镜像构建设置](https://docs.onedev.io/tutorials/cicd/build-docker-image)
 4. 执行器可访问 Debian 软件源、Docker Hub 和 Harbor，信任 Harbor 的 TLS 证书。运行验收会执行 openssl 的 legacy DES provider，仅用于 VNC 协议认证；没有修改 TLS 验证。
 
 推送 main 后，在 OneDev 的 Builds / Pipeline 查看这两个作业。首次完成前不能将候选镜像视为已验收。若安装的 OneDev 不支持 buildspec version 53，应先通过其构建编辑器确认兼容版本；此文件采用当前官方的 type 字段格式。
