@@ -248,7 +248,7 @@ docker image tag 115-browser-local:36.0.1 115-browser-local:before-change
 - `validate`：所有分支更新和 PR 更新触发，校验 vendor 的 SHA256、Shell 语法及配置和进程管理测试。
 - `publish-image`：main 更新触发，依赖 validate 成功。构建 linux/amd64 镜像并推送 `build-<构建编号>` 和 `sha-<完整提交哈希>`；再从 Harbor 拉取该镜像，启动桌面和 115 浏览器，依次验证两种后端的健康与真实网页连接、Kasm 原生认证和未认证拒绝、原后端 RFB 认证、四种实际分辨率、最大化测试网页布局与静态/动画性能。随后发布 `.ci-artifacts/**` 中的 JSON、截图和诊断日志。成功后将同一镜像发布为 `latest`，并输出 manifest。
 
-验收失败时不更新 latest；失败候选仍保留在构建编号标签，便于诊断。生产部署使用验收成功的构建编号或 digest。发布作业使用同一 sequentialGroup；应让其使用同一个明确的执行器，避免并发覆盖 latest。重跑旧提交会再次发布该旧提交，回滚或重跑时需留意。
+验收失败时不更新 latest；失败候选仍保留在构建编号标签，便于诊断。生产部署默认跟踪 `latest`，同时保留 `build-<构建编号>` 和 `sha-<完整提交哈希>` 用于回退。发布作业使用同一 sequentialGroup；应让其使用同一个明确的执行器，避免并发覆盖 latest。重跑旧提交会再次发布该旧提交，回滚或重跑时需留意。
 
 执行器命令容器默认只有 64 MiB `/dev/shm`，验收中的两个 Chromium 进程使用 `--disable-dev-shm-usage`，通过临时目录进行内存映射，避免大分辨率时卡住。该参数只在 CI 测试启动器中设置；实际部署仍使用 Compose 的 1 GiB `shm_size`。性能报告记录这一测试条件。
 
@@ -265,15 +265,40 @@ docker image tag 115-browser-local:36.0.1 115-browser-local:before-change
 
 ```bash
 cp .env.example .env
-# 编辑 .env：设置 VNC_PASSWORD 和已验收的 IMAGE_115
-# IMAGE_115=registry.devshuai.com/shuai-repo/115-docker:build-<number>
+# 编辑 .env：设置 VNC_PASSWORD；IMAGE_115 留空不设置，或显式设置如下
+# IMAGE_115=registry.devshuai.com/shuai-repo/115-docker:latest
 mkdir -p data/profile data/downloads
 docker login registry.devshuai.com
 docker compose -f compose.yaml -f compose.registry.yaml pull
 docker compose -f compose.yaml -f compose.registry.yaml up -d --no-build
 ```
 
-私有 Harbor 需要先登录；登录信息由 Docker 凭据配置管理。后续命令保持相同的 -f 参数。registry 覆盖文件设置 pull_policy 为 always；本地构建模式不加此覆盖文件。回滚将 IMAGE_115 改为旧的成功标签或 digest，重新 pull 和 up；仍需恢复与镜像配套的 profile 备份。
+私有 Harbor 需要先登录；登录信息由 Docker 凭据配置管理。后续命令保持相同的 -f 参数。registry 覆盖文件设置 pull_policy 为 always；本地构建模式不加此覆盖文件。已有 `.env` 若设置了本地镜像或 `build-<number>`，需改为上面的 `latest` 地址。`latest` 发布或拉取后，正在运行的容器不会自行替换；更新仍需重新创建容器。
+
+### 检查更新
+
+在 Docker 宿主机运行工程内脚本（Python 3 标准库，无需额外依赖）：
+
+```bash
+python3 scripts/check-update.py --container 115-docker
+# Compose 自动命名的容器可直接使用其 ID：
+python3 scripts/check-update.py --container "$(docker compose -f compose.yaml -f compose.registry.yaml ps -q browser115)"
+# 群晖 sudo 部署时使用同一 root Docker 登录配置：
+sudo python3 scripts/check-update.py --docker /usr/local/bin/docker --container 115-docker
+```
+
+脚本通过 Docker 已有登录信息查询仓库，比较**运行中容器**的 image ID 与对应平台远端镜像的 config digest，不下载镜像层。已缓存新镜像、manifest index 与平台 manifest digest 不同、BuildKit 证明附件均不会造成误判。退出码 `0` 表示最新、`10` 表示有更新、`1` 表示检查失败（不等同于无更新）；`--json` 可供管理脚本读取。默认只检查，更新操作由管理员执行。
+
+更新前记录当前镜像 ID 和成功构建标签，停止容器并备份 profile，再拉取和重建：
+
+```bash
+docker compose -f compose.yaml -f compose.registry.yaml stop
+tar -czf profile-before-update.tar.gz -C data profile  # 自定义 PROFILE_DIR 时替换路径
+docker compose -f compose.yaml -f compose.registry.yaml pull
+docker compose -f compose.yaml -f compose.registry.yaml up -d --no-build
+```
+
+群晖 Container Manager 直接创建的容器，在保存挂载、端口及环境设置后重新创建为 `latest`；保留旧容器但关闭其自动重启，避免端口和 profile 冲突。回滚将 IMAGE_115 改为旧的成功标签或 digest，重新 pull 和 up；仍需先保留当前 profile 并恢复与旧镜像配套的 profile 备份。
 
 ## 验证与兼容
 

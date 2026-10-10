@@ -21,7 +21,7 @@ jobs:
         python3 scripts/vendor.py
         bash -n runtime/*.sh scripts/ci-smoke.sh
         python3 -m unittest discover -s tests -v
-        python3 -m py_compile scripts/ci-rfb.py scripts/ci-desktop.py scripts/cdp.py
+        python3 -m py_compile scripts/ci-rfb.py scripts/ci-desktop.py scripts/cdp.py scripts/check-update.py
     runAs: '0:0'
     useTTY: false
     condition: SUCCESSFUL
@@ -82,8 +82,8 @@ jobs:
       passwordSecret: registry-password
     condition: SUCCESSFUL
   - type: RunImagetoolsStep
-    name: inspect published manifest
-    arguments: inspect registry.devshuai.com/shuai-repo/115-docker:build-@build_number@
+    name: inspect published latest manifest
+    arguments: inspect registry.devshuai.com/shuai-repo/115-docker:latest
     registryLogins:
     - registryUrl: registry.devshuai.com
       userName: '@secret:registry-username@'
