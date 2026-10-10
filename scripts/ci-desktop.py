@@ -146,7 +146,7 @@ def run_backend(backend):
     profile.mkdir(parents=True)
     launcher = profile/'launch.sh'
     launcher.write_text(f'#!/bin/bash\nexec /opt/115/115.sh --remote-debugging-port={server_port} '
-                        '--disable-background-networking --disable-sync --disable-component-update '
+                        '--disable-background-networking --disable-sync --disable-component-update --disable-dev-shm-usage '
                         '--remote-allow-origins=* --app="file://'+str(ROOT/'scripts/perf-fixture.html')+'"\n')
     launcher.chmod(0o700)
     env['BROWSER_LAUNCHER'] = str(launcher)
@@ -165,7 +165,7 @@ def run_backend(backend):
         if backend == 'legacy':
             subprocess.run(['python3', str(ROOT/'scripts/ci-rfb.py')], env=env, check=True)
         client_process = subprocess.Popen([
-            '/usr/local/115Browser/115Browser', '--headless=old', '--no-sandbox', '--disable-gpu',
+            '/usr/local/115Browser/115Browser', '--headless=old', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
             '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
             '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
             '--disable-sync', '--disable-component-update', f'--remote-debugging-port={client_port}',
@@ -307,6 +307,7 @@ def main():
                   cpu_unit='100% = one core; server process tree excludes headless web client',
                   transfer_unit='received WebSocket payload; excludes HTTP, TLS and TCP overhead',
                   pixel_sample_unit='observed pixel changes at approximately 2 Hz; not rendered FPS',
+                  chromium_shared_memory='CI only: --disable-dev-shm-usage for 64 MiB executor containers; production Compose uses 1 GiB shm',
                   scope='synthetic scene on this executor; not a guarantee for 115 video or WAN performance', backends=[])
     for backend in os.environ.get('CI_BACKENDS', 'legacy,kasm').split(','):
         assert backend in ('legacy','kasm')

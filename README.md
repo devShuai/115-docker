@@ -227,6 +227,8 @@ docker image tag 115-browser-local:36.0.1 115-browser-local:before-change
 
 验收失败时不更新 latest；失败候选仍保留在构建编号标签，便于诊断。生产部署使用验收成功的构建编号或 digest。发布作业使用同一 sequentialGroup；应让其使用同一个明确的执行器，避免并发覆盖 latest。重跑旧提交会再次发布该旧提交，回滚或重跑时需留意。
 
+执行器命令容器默认只有 64 MiB `/dev/shm`，验收中的两个 Chromium 进程使用 `--disable-dev-shm-usage`，通过临时目录进行内存映射，避免大分辨率时卡住。该参数只在 CI 测试启动器中设置；实际部署仍使用 Compose 的 1 GiB `shm_size`。性能报告记录这一测试条件。
+
 首次使用需在 OneDev 和 Harbor 准备以下设置：
 
 1. Harbor 中存在 `shuai-repo` 项目，推送账号拥有该项目 Pull/Push 权限；发布作业还需 Pull 权限才能验收。
