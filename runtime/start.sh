@@ -10,6 +10,11 @@ else
   printf '%s\n' "$PASSWORD" | tigervncpasswd -f >"$RUNTIME_DIR/passwd"
 fi
 chmod 600 "$RUNTIME_DIR/passwd"
+if [[ "$ENABLE_DOWNLOAD_API" == true ]]; then
+  # The download API keeps only a PBKDF2 hash of the same password.
+  printf '%s' "$PASSWORD" | python3 "${DOWNLOAD_API_AUTH:-/opt/115/downloader/auth.py}" "$REMOTE_USER" \
+    >"$RUNTIME_DIR/api-auth"
+fi
 unset PASSWORD
 python3 "${CONFIGURE_SCRIPT:-/opt/115/configure.py}"
 # A profile must have only one owner process. Remove locks from a stopped instance.
@@ -82,6 +87,12 @@ if [[ "$AUTO_START" == true ]]; then
   "${BROWSER_LAUNCHER:-/opt/115/115.sh}" &
   all_pids+=("$!")
   echo "Started 115 Browser (PID $!)."
+fi
+if [[ "$ENABLE_DOWNLOAD_API" == true ]]; then
+  # Not critical: running downloads continue if the API stops.
+  python3 "${DOWNLOAD_API_SERVER:-/opt/115/downloader/server.py}" &
+  all_pids+=("$!")
+  echo "Started download API (PID $!)."
 fi
 
 # A failed desktop service must stop the container so Docker can restart it.

@@ -25,6 +25,7 @@ runtime/
   index.html                       默认连接入口
   web/                             两种网页客户端的默认中文界面与注入脚本
   kasmvnc/                         KasmVNC 校订版中文翻译和中文断开页
+  downloader/                      添加下载的网页与 JSON 接口，以及 CDP 客户端
   novnc/                           自动连接和强制分辨率适配
   115Cookie/                       本工程的可选 Cookie 扩展
 rootfs/
@@ -48,7 +49,7 @@ scripts/vendor.py                  校验或重新下载固定归档
 scripts/ci-smoke.sh                 镜像内启动桌面和浏览器验收
 scripts/ci-rfb.py                   回退后端 RFB 认证与远程分辨率验收
 scripts/ci-desktop.py               两种后端真实网页连接、自适应及性能对比
-scripts/cdp.py                      工程自带的标准库 CDP/WebSocket 测试客户端
+runtime/downloader/cdp.py           工程自带的标准库 CDP/WebSocket 客户端（下载接口和测试共用）
 scripts/perf-fixture.html           固定本地静态及动画测试画面
 tests/test_runtime.py              配置与启动管理验证
 nginx/115-kasm.conf.example        KasmVNC HTTPS 和原生认证转发
@@ -80,6 +81,7 @@ backups/                          部署时创建的备份
 访问端浏览器 → SSH 隧道或 HTTPS 认证代理 → 宿主机 127.0.0.1:1150
   → KasmVNC 原生 HTTP/WebSocket → Xfce 桌面 → 115 浏览器
   回退：noVNC → Websockify → TigerVNC → 同一桌面
+添加下载：宿主机 127.0.0.1:1151 → 下载接口 → 容器内 127.0.0.1:9222 → 同一个 115 浏览器
        /etc/115       → data/profile
        /opt/Downloads → data/downloads
 ```
@@ -180,6 +182,39 @@ KasmVNC 网页客户端原本按访问端浏览器的语言显示，浏览器首
 docker compose exec browser115 date
 docker compose exec browser115 sh -c 'ls /usr/share/locale/zh_CN/LC_MESSAGES | head'
 ```
+
+## 添加下载接口
+
+在远程桌面里扫码登录 115 后，不必再打开桌面，也能通过网页或接口添加下载。打开 `http://127.0.0.1:1151/`（宿主机端口由 `API_PORT` 决定），用户名和密码与远程桌面相同。支持：
+
+- 磁力、ed2k、HTTP、FTP 链接加入 115 云下载（离线下载），每行一个；可选云下载完成后自动下载到 NAS。
+- 网盘里的文件或文件夹按路径下载到 NAS，例如 `/电影/某文件夹`。
+- 115 分享链接（含提取码）直接下载到 NAS。
+- 查看云下载任务、等待下到 NAS 的任务和 NAS 本地下载记录。
+
+实现方式：115 浏览器只在容器内的 `127.0.0.1:9222` 开放调试端口，Compose 不发布这个端口。接口通过它在一个 115 网盘后台标签页里调用 115 网页自己使用的离线接口，以及 115 浏览器提供给网页的 `browserInterface.CreateDownloadTask`/`CreateSharedTask`。因此文件仍由 115 浏览器的下载引擎下载，出现在它的传输列表里，保存到 `/opt/Downloads`。
+
+```bash
+# 链接 → 云下载，完成后自动下载到 NAS
+curl -u 115:密码 -H 'Content-Type: application/json' \
+  -d '{"links":"magnet:?xt=urn:btih:...","to_nas":true}' http://127.0.0.1:1151/api/offline
+# 网盘路径 → NAS
+curl -u 115:密码 -H 'Content-Type: application/json' -d '{"path":"/电影/某文件夹"}' http://127.0.0.1:1151/api/download
+# 分享链接 → NAS；链接里没有提取码时加 "receive_code"
+curl -u 115:密码 -H 'Content-Type: application/json' \
+  -d '{"url":"https://115cdn.com/s/sw...?password=abcd"}' http://127.0.0.1:1151/api/share
+# 查询：云下载任务、等待下到 NAS 的任务、NAS 本地下载、登录状态
+curl -u 115:密码 http://127.0.0.1:1151/api/offline
+curl -u 115:密码 http://127.0.0.1:1151/api/watch
+curl -u 115:密码 http://127.0.0.1:1151/api/local
+curl -u 115:密码 http://127.0.0.1:1151/api/status
+```
+
+勾选"完成后下载到 NAS"的任务记录在 `/etc/115/115-downloads.json`，重建容器后继续跟踪。接口每分钟查询一次 115 云下载列表，任务完成并转存到网盘后开始下载到 NAS；已完成和失败的记录保留 7 天。
+
+返回 409 表示 115 未登录，或 115 要求完成安全验证（错误码 911），需要在远程桌面的 115 浏览器里操作一次；返回 503 表示 115 浏览器没有运行。接口使用 Basic 认证，连续失败 10 次后锁定 10 分钟；POST 只接受同源的 JSON 请求，防止其他网站借浏览器缓存的密码提交下载。发布方式与 1150 相同：保持回环绑定，远程使用 SSH 隧道或 HTTPS 反代，反代时保留 Host 头。
+
+这些是 115 未公开的网页接口，按 115 浏览器 36.0.1 和 2026 年 10 月的 115 网页代码实现，115 更新后可能需要调整。115 的登录 Cookie 只保存在浏览器内存里，浏览器或容器重启后可能需要重新扫码登录。不需要此功能时设置 `ENABLE_DOWNLOAD_API=false`，浏览器也不会开放调试端口。
 
 ## HTTPS 认证入口
 
@@ -340,7 +375,7 @@ docker compose -f compose.yaml -f compose.compat.yaml up -d --build
 
 ## 群晖启动报错处理
 
-在 Container Manager 界面直接创建容器时，环境变量名是 **`PASSWORD`**，Kasm 模式值为 8～128 位英文字母或数字（推荐至少 16 位），并设置 `REMOTE_USER=115`；legacy 模式恰好 8 位。`VNC_PASSWORD` 是本项目 Compose 使用的 `.env` 变量，Compose 会将其映射为容器的 `PASSWORD`。两者不能在直接创建容器时混用。修改环境变量后重新创建容器，并继续挂载原来的 `/etc/115` 和 `/opt/Downloads` 数据目录；仅重新启动旧容器不会更新其环境配置。时区不需要手动添加，未设置或留空时使用 `Asia/Shanghai`。
+在 Container Manager 界面直接创建容器时，环境变量名是 **`PASSWORD`**，Kasm 模式值为 8～128 位英文字母或数字（推荐至少 16 位），并设置 `REMOTE_USER=115`；legacy 模式恰好 8 位。`VNC_PASSWORD` 是本项目 Compose 使用的 `.env` 变量，Compose 会将其映射为容器的 `PASSWORD`。两者不能在直接创建容器时混用。修改环境变量后重新创建容器，并继续挂载原来的 `/etc/115` 和 `/opt/Downloads` 数据目录；仅重新启动旧容器不会更新其环境配置。时区不需要手动添加，未设置或留空时使用 `Asia/Shanghai`。使用添加下载接口时，在端口设置中把容器的 1151 映射到 NAS 端口。
 
 `XDG_RUNTIME_DIR "/run/115" not available` 是旧镜像的启动顺序问题；使用包含 `runtime/entrypoint.sh` 修复的镜像。无需把 `/run/115` 映射到 NAS 持久目录，也不要在 Container Manager 中覆盖镜像的启动命令。
 
@@ -374,6 +409,7 @@ sudo sysctl -w "fs.inotify.max_user_watches=$watch_limit" \
 - `date` 与任务栏时钟为北京时间（或设置的 TZ），用访问端输入法能在 115 搜索框输入中文。
 - 本机或 SSH 连接正常，未授权网络无法直连 1150，HTTPS 入口要求认证。
 - 扫码和测试下载成功，宿主机能找到文件。
+- 添加下载页面需要认证；提交一个测试链接后，云下载完成即自动下载到 NAS。
 - 重建后文件与浏览器配置保留，登录仍受服务端策略影响。
 - 改变窗口并进出全屏，xrandr 确认实际尺寸变化，115 最大化窗口跟随。
 - 关键桌面服务故障触发容器恢复，主动关闭浏览器可从任务栏重新打开。

@@ -12,12 +12,14 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
-from cdp import CDP
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'runtime/downloader'))
+from cdp import CDP  # noqa: E402
 OUT = ROOT / '.ci-artifacts'
 PASSWORD = 'Check123'  # Synthetic CI profiles only.
 
@@ -239,6 +241,39 @@ def verify_auth(backend):
         raise AssertionError('KasmVNC exposed an unnecessary raw RFB port')
 
 
+def api_request(method, path, body=None, headers=None, credentials='115:'+PASSWORD):
+    headers = dict(headers or {})
+    if credentials:
+        headers['Authorization'] = 'Basic '+base64.b64encode(credentials.encode()).decode()
+    connection = http.client.HTTPConnection('127.0.0.1', 1151, timeout=10)
+    try:
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        return response.status, response.read()
+    finally:
+        connection.close()
+
+
+def verify_download_api(debug_port):
+    wait_for(lambda: api_request('GET', '/', credentials=None)[0] == 401, 'download API listening')
+    status, page = api_request('GET', '/')
+    assert status == 200 and '115 添加下载' in page.decode(), f'Download page failed: {status}'
+    status, body = api_request('GET', '/api/status')
+    state = json.loads(body)
+    # The CI browser is not logged in to 115; the API must see the browser and must not claim a login.
+    assert status == 200 and state['browser'] is True and state['logged_in'] is not True, state
+    json_type = {'Content-Type': 'application/json'}
+    assert api_request('POST', '/api/offline', 'links=x', {'Content-Type': 'application/x-www-form-urlencoded'})[0] == 415
+    assert api_request('POST', '/api/offline', '{}', {**json_type, 'Origin': 'http://attacker.example'})[0] == 403
+    status, body = api_request('POST', '/api/offline', json.dumps({'links': 'javascript:alert(1)'}), json_type)
+    assert status == 400 and '无法识别' in json.loads(body)['error'], body
+    # Chromium must keep its DevTools port on loopback; Compose never publishes it.
+    listeners = [line.split()[1] for line in Path('/proc/net/tcp').read_text().splitlines()[1:]
+                 if line.split()[3] == '0A' and int(line.split()[1].split(':')[1], 16) == debug_port]
+    assert listeners and all(address.startswith('0100007F:') for address in listeners), listeners
+    print('PASS: download API auth, same-origin JSON checks, browser status and loopback-only DevTools', flush=True)
+
+
 def run_backend(backend):
     client_port = 9223 if backend == 'legacy' else 9225
     server_port = client_port+1
@@ -250,6 +285,7 @@ def run_backend(backend):
            'KASM_WEBP_BUDGET': '0',
            # Container Manager passes TZ empty; the desktop must still use China time.
            'TZ': '',
+           'ENABLE_DOWNLOAD_API': 'true', 'BROWSER_DEBUG_PORT': str(server_port),
            'PROFILE_DIR_IN_CONTAINER': str(profile/'server'), 'RUNTIME_DIR': '/run/115'}
     profile.mkdir(parents=True)
     launcher = profile/'launch.sh'
@@ -272,6 +308,7 @@ def run_backend(backend):
         wait_for(lambda: fixture.evaluate('!!window.benchmark'), 'visible browser fixture')
         zone = fixture.evaluate('Intl.DateTimeFormat().resolvedOptions().timeZone')
         assert zone == 'Asia/Shanghai', f'115 Browser time zone is {zone!r}'
+        verify_download_api(server_port)
         if backend == 'legacy':
             subprocess.run(['python3', str(ROOT/'scripts/ci-rfb.py')], env=env, check=True)
         client_process = subprocess.Popen([

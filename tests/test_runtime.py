@@ -340,7 +340,8 @@ class SupervisorTests(unittest.TestCase):
         self.environment = {
             **os.environ, "PATH": str(self.bin) + os.pathsep + os.environ["PATH"],
             "PASSWORD": "Check123", "REMOTE_BACKEND": "legacy", "DISPLAY": ":9915", "AUTO_START": "false",
-            "ENABLE_COOKIE_EXTENSION": "false", "PID_DIRECTORY": str(self.directory),
+            "ENABLE_COOKIE_EXTENSION": "false", "ENABLE_DOWNLOAD_API": "false",
+            "PID_DIRECTORY": str(self.directory),
             "RUNTIME_DIR": str(self.directory / "run"),
             "PROFILE_DIR_IN_CONTAINER": str(self.directory / "profile"),
             "CONFIGURE_SCRIPT": str(ROOT / "runtime/configure.py"),
@@ -385,6 +386,28 @@ class SupervisorTests(unittest.TestCase):
         self.assertEqual(process.returncode, 1, output)
         self.assertIn("Started KasmVNC", output)
         self.assertNotIn("Started noVNC", output)
+        self.assert_children_stopped()
+
+    def test_download_api_gets_only_a_password_hash_and_stops_with_the_desktop(self):
+        server = self.bin / "download-api"
+        server.symlink_to(self.directory / "service.py")
+        process = self.launch(ENABLE_DOWNLOAD_API="true", DOWNLOAD_API_SERVER=str(server),
+                              DOWNLOAD_API_AUTH=str(ROOT / "runtime/downloader/auth.py"))
+        marker = self.directory / "download-api.pid"
+        deadline = time.monotonic() + 8
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(marker.exists())
+        credential = self.directory / "run/api-auth"
+        user, _, encoded = credential.read_text().strip().partition(":")
+        self.assertEqual(user, "115")
+        self.assertTrue(encoded.startswith("pbkdf2_sha256$"))
+        self.assertNotIn("Check123", credential.read_text())
+        self.assertEqual(credential.stat().st_mode & 0o777, 0o600)
+        process.send_signal(signal.SIGTERM)
+        output, _ = process.communicate(timeout=8)
+        self.assertEqual(process.returncode, 0, output)
+        self.assertIn("Started download API", output)
         self.assert_children_stopped()
 
 

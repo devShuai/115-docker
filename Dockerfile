@@ -63,9 +63,10 @@ RUN mkdir -p /etc/115 /opt/Downloads /opt/.cache /opt/.config \
     && test -f /usr/share/locale/zh_CN/LC_MESSAGES/xfce4-panel.mo \
     && test -x /usr/bin/xfwm4 \
     && test -f /usr/share/themes/Arc-Dark/xfwm4/themerc \
-    && test -f /usr/share/applications/115Browser.desktop
+    && test -f /usr/share/applications/115Browser.desktop \
+    && test -f /opt/115/downloader/server.py
 
-EXPOSE 1150
+EXPOSE 1150 1151
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD ["python3", "/opt/115/healthcheck.py"]
 ENTRYPOINT ["/opt/115/entrypoint.sh"]

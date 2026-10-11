@@ -1,4 +1,4 @@
-"""Small, dependency-free CDP client used only by the isolated CI desktop tests."""
+"""Small, dependency-free CDP client for the download API and the CI desktop tests."""
 import base64
 import hashlib
 import json
@@ -111,6 +111,19 @@ class CDP:
         result = self.call("Runtime.evaluate", {"expression": expression, "returnByValue": True})
         if "exceptionDetails" in result:
             raise RuntimeError(str(result["exceptionDetails"]))
+        return result.get("result", {}).get("value")
+
+    def run(self, declaration, argument=None, timeout=60):
+        """Call a page function with one JSON argument. Values are never spliced into code."""
+        target = self.call("Runtime.evaluate", {"expression": "globalThis"})["result"]["objectId"]
+        params = {"functionDeclaration": declaration, "objectId": target,
+                  "awaitPromise": True, "returnByValue": True}
+        if argument is not None:
+            params["arguments"] = [{"value": argument}]
+        result = self.call("Runtime.callFunctionOn", params, timeout=timeout)
+        if "exceptionDetails" in result:
+            details = result["exceptionDetails"]
+            raise RuntimeError(details.get("exception", {}).get("description") or details.get("text", "page error"))
         return result.get("result", {}).get("value")
 
     def pump(self, seconds):

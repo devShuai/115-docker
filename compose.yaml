@@ -20,6 +20,7 @@ services:
       - no-new-privileges:true
     ports:
       - "${BIND_IP:-127.0.0.1}:${WEB_PORT:-1150}:1150"
+      - "${BIND_IP:-127.0.0.1}:${API_PORT:-1151}:1151"
     environment:
       REMOTE_BACKEND: ${REMOTE_BACKEND:-kasm}
       REMOTE_USER: ${REMOTE_USER:-115}
@@ -28,6 +29,7 @@ services:
       KASM_WEBP_BUDGET: ${KASM_WEBP_BUDGET:-0}
       PASSWORD: ${VNC_PASSWORD:?Set VNC_PASSWORD in .env; see .env.example for backend password rules}
       AUTO_START: ${AUTO_START:-true}
+      ENABLE_DOWNLOAD_API: ${ENABLE_DOWNLOAD_API:-true}
       DISPLAY_WIDTH: ${DISPLAY_WIDTH:-1600}
       DISPLAY_HEIGHT: ${DISPLAY_HEIGHT:-900}
       TZ: ${TZ:-Asia/Shanghai}

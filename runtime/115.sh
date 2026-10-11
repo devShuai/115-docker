@@ -8,6 +8,11 @@ extra_args=()
 if [[ "${ENABLE_COOKIE_EXTENSION:-false}" == "true" ]]; then
   extra_args+=("--load-extension=${RUNTIME_DIR:-/run/115}/115Cookie")
 fi
+# The download API drives the logged-in browser through this port. Chromium binds
+# it to 127.0.0.1 inside the container and Compose never publishes it.
+if [[ "${ENABLE_DOWNLOAD_API:-true}" == "true" ]]; then
+  extra_args+=("--remote-debugging-port=${BROWSER_DEBUG_PORT:-9222}")
+fi
 
 # Do not ignore TLS certificate errors or disable Chromium site isolation.
 exec /usr/local/115Browser/115Browser \

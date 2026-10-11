@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>115 添加下载</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>115 添加下载</h1>
+    <p id="status" class="status" role="status">正在检查 115 浏览器…</p>
+  </header>
+  <main>
+    <section>
+      <h2>链接 → 115 云下载</h2>
+      <form id="offline">
+        <label for="links">磁力、ed2k、HTTP 或 FTP 链接，每行一个</label>
+        <textarea id="links" rows="5" required spellcheck="false" placeholder="magnet:?xt=urn:btih:..."></textarea>
+        <label class="check"><input type="checkbox" id="to-nas" checked> 云下载完成后自动下载到 NAS</label>
+        <button type="submit">添加到云下载</button>
+      </form>
+    </section>
+    <section>
+      <h2>网盘文件或文件夹 → NAS</h2>
+      <form id="drive">
+        <label for="path">网盘里的路径</label>
+        <input id="path" required spellcheck="false" placeholder="/电影/某文件夹">
+        <button type="submit">下载到 NAS</button>
+      </form>
+    </section>
+    <section>
+      <h2>分享链接 → NAS</h2>
+      <form id="share">
+        <label for="share-url">115 分享链接</label>
+        <input id="share-url" required spellcheck="false" placeholder="https://115cdn.com/s/...?password=...">
+        <label for="receive-code">提取码（链接里没有时填写）</label>
+        <input id="receive-code" maxlength="4" autocomplete="off" spellcheck="false">
+        <button type="submit">下载到 NAS</button>
+      </form>
+    </section>
+    <p id="message" class="message" role="alert" hidden></p>
+    <section>
+      <h2>等待下到 NAS</h2>
+      <ul id="watch" class="list"></ul>
+    </section>
+    <section>
+      <h2>云下载任务</h2>
+      <ul id="cloud" class="list"></ul>
+    </section>
+    <section>
+      <h2>NAS 本地下载</h2>
+      <ul id="local" class="list"></ul>
+    </section>
+  </main>
+</body>
+</html>

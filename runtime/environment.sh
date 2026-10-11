@@ -13,6 +13,9 @@ export REMOTE_USER="${REMOTE_USER:-115}"
 export VNC_FPS="${VNC_FPS:-30}"
 export KASM_THREADS="${KASM_THREADS:-2}"
 export KASM_WEBP_BUDGET="${KASM_WEBP_BUDGET:-0}"
+export ENABLE_DOWNLOAD_API="${ENABLE_DOWNLOAD_API:-true}"
+export BROWSER_DEBUG_PORT="${BROWSER_DEBUG_PORT:-9222}"
+export DOWNLOAD_API_PORT="${DOWNLOAD_API_PORT:-1151}"
 # Container UIs may pass an empty TZ, which glibc would treat as UTC.
 export TZ="${TZ:-Asia/Shanghai}"
 
@@ -46,9 +49,14 @@ for size in "$DISPLAY_WIDTH" "$DISPLAY_HEIGHT"; do
     echo 'Initial display dimensions must be between 100 and 8192.' >&2; exit 1;
   }
 done
-for flag in "$AUTO_START" "$ENABLE_COOKIE_EXTENSION"; do
+for flag in "$AUTO_START" "$ENABLE_COOKIE_EXTENSION" "$ENABLE_DOWNLOAD_API"; do
   [[ "$flag" == true || "$flag" == false ]] || {
-    echo 'AUTO_START and ENABLE_COOKIE_EXTENSION must be true or false.' >&2; exit 1;
+    echo 'AUTO_START, ENABLE_COOKIE_EXTENSION and ENABLE_DOWNLOAD_API must be true or false.' >&2; exit 1;
+  }
+done
+for port in "$BROWSER_DEBUG_PORT" "$DOWNLOAD_API_PORT"; do
+  [[ "$port" =~ ^[1-9][0-9]{0,4}$ ]] && (( 10#$port <= 65535 && 10#$port != 1150 )) || {
+    echo 'BROWSER_DEBUG_PORT and DOWNLOAD_API_PORT must be TCP ports other than 1150.' >&2; exit 1;
   }
 done
 

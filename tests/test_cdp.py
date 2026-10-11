@@ -6,7 +6,7 @@ import struct
 import threading
 import unittest
 
-spec = importlib.util.spec_from_file_location('cdp', Path(__file__).resolve().parents[1]/'scripts/cdp.py')
+spec = importlib.util.spec_from_file_location('cdp', Path(__file__).resolve().parents[1]/'runtime/downloader/cdp.py')
 cdp = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cdp)
 
