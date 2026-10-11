@@ -4,55 +4,83 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>115 添加下载</title>
+  <meta name="color-scheme" content="light dark">
+  <title>115 下载</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
 </head>
 <body>
-  <header>
-    <h1>115 添加下载</h1>
-    <p id="status" class="status" role="status">正在检查 115 浏览器…</p>
+  <header class="top">
+    <div class="top-inner">
+      <span class="brand"><img class="logo" src="icon.svg" alt="">115 下载</span>
+      <span id="login" class="login"><i class="dot"></i><span id="login-text">正在连接 115 浏览器</span></span>
+      <span id="activity" class="activity" hidden>
+        <span id="activity-text"></span>
+        <strong id="activity-pct"></strong>
+      </span>
+    </div>
+    <div id="top-progress" class="top-progress" hidden><span></span></div>
   </header>
+
   <main>
-    <section>
-      <h2>链接 → 115 云下载</h2>
-      <form id="offline">
-        <label for="links">磁力、ed2k、HTTP 或 FTP 链接，每行一个</label>
-        <textarea id="links" rows="5" required spellcheck="false" placeholder="magnet:?xt=urn:btih:..."></textarea>
-        <label class="check"><input type="checkbox" id="to-nas" checked> 云下载完成后自动下载到 NAS</label>
-        <button type="submit">添加到云下载</button>
-      </form>
+    <form id="add" class="panel add" autocomplete="off">
+      <div class="add-row">
+        <label class="sr" for="input">链接或网盘路径</label>
+        <textarea id="input" rows="1" spellcheck="false"
+                  placeholder="粘贴磁力、ed2k、HTTP 链接或 115 分享链接，也可以输入网盘路径，如 /电影"></textarea>
+        <input id="code" class="code" maxlength="4" placeholder="提取码" aria-label="提取码" hidden>
+        <button id="go" class="btn primary" type="submit" disabled>解析</button>
+      </div>
+      <div class="add-foot">
+        <span id="kind" class="kind"></span>
+        <label id="auto-wrap" class="check" hidden><input id="auto" type="checkbox">云下载完成后，自动把整个任务下载到 NAS</label>
+        <button id="browse" class="btn ghost" type="button">浏览网盘</button>
+      </div>
+      <p id="message" class="message" role="status" hidden></p>
+    </form>
+
+    <section id="waiting" class="panel" hidden>
+      <div class="panel-head" id="waiting-head">等待云下载完成</div>
+      <ul id="waiting-list" class="tasks"></ul>
     </section>
-    <section>
-      <h2>网盘文件或文件夹 → NAS</h2>
-      <form id="drive">
-        <label for="path">网盘里的路径</label>
-        <input id="path" required spellcheck="false" placeholder="/电影/某文件夹">
-        <button type="submit">下载到 NAS</button>
-      </form>
+
+    <section id="picker" class="panel picker" aria-label="选择要下载的内容" hidden>
+      <div class="picker-head">
+        <nav id="crumbs" class="crumbs" aria-label="位置"></nav>
+        <input id="filter" class="filter" type="search" placeholder="筛选文件名" aria-label="筛选文件名">
+        <button id="close" class="btn icon-btn" type="button" aria-label="关闭">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div id="loading" class="loading" hidden></div>
+      <div class="files-wrap">
+        <table class="files">
+          <thead>
+            <tr><th class="c"><input id="all" type="checkbox" aria-label="全选"></th><th>名称</th><th class="size">大小</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <p id="empty" class="empty" hidden>这个文件夹是空的</p>
+      </div>
+      <p id="truncated" class="note more" hidden><span id="more-text"></span><button id="more" class="btn ghost" type="button">加载更多</button></p>
+      <div class="picker-foot">
+        <span id="selection" class="selection">未选择</span>
+        <span class="actions">
+          <button id="whole" class="btn" type="button" hidden>下载整个文件夹</button>
+          <button id="fetch" class="btn primary" type="button" disabled>下载到 NAS</button>
+        </span>
+      </div>
     </section>
-    <section>
-      <h2>分享链接 → NAS</h2>
-      <form id="share">
-        <label for="share-url">115 分享链接</label>
-        <input id="share-url" required spellcheck="false" placeholder="https://115cdn.com/s/...?password=...">
-        <label for="receive-code">提取码（链接里没有时填写）</label>
-        <input id="receive-code" maxlength="4" autocomplete="off" spellcheck="false">
-        <button type="submit">下载到 NAS</button>
-      </form>
-    </section>
-    <p id="message" class="message" role="alert" hidden></p>
-    <section>
-      <h2>等待下到 NAS</h2>
-      <ul id="watch" class="list"></ul>
-    </section>
-    <section>
-      <h2>云下载任务</h2>
-      <ul id="cloud" class="list"></ul>
-    </section>
-    <section>
-      <h2>NAS 本地下载</h2>
-      <ul id="local" class="list"></ul>
+
+    <section class="panel queue">
+      <div class="tabs" role="tablist">
+        <button id="tab-nas" class="tab" type="button" role="tab" aria-selected="true" aria-controls="nas">NAS 下载<span id="count-nas" class="count"></span></button>
+        <button id="tab-cloud" class="tab" type="button" role="tab" aria-selected="false" aria-controls="cloud">云下载<span id="count-cloud" class="count"></span></button>
+      </div>
+      <ul id="nas" class="tasks" role="tabpanel" aria-labelledby="tab-nas"></ul>
+      <p id="nas-note" class="note" hidden>115 浏览器的传输列表没有打开，这里显示的是下载记录，没有实时速度。</p>
+      <ul id="cloud" class="tasks" role="tabpanel" aria-labelledby="tab-cloud" hidden></ul>
     </section>
   </main>
 </body>

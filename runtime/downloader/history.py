@@ -4,6 +4,7 @@ import sqlite3
 
 # Chromium download states; 115 adds its accelerated transfers to the same table.
 STATES = {0: "下载中", 1: "已完成", 2: "已取消", 3: "已中断", 4: "已中断"}
+KEYS = {0: "downloading", 1: "done", 2: "canceled", 3: "failed", 4: "failed"}
 _WINDOWS_EPOCH_OFFSET = 11644473600
 
 
@@ -21,7 +22,7 @@ def recent_downloads(profile_dir, limit=30):
     finally:
         connection.close()
     return [{"name": Path(target).name or target, "path": target, "received": received,
-             "total": total, "state": STATES.get(state, str(state)),
+             "total": total, "state": STATES.get(state, str(state)), "key": KEYS.get(state, "failed"),
              "started": int(start / 1_000_000 - _WINDOWS_EPOCH_OFFSET) if start else None,
              "finished": int(end / 1_000_000 - _WINDOWS_EPOCH_OFFSET) if end else None}
             for target, received, total, state, start, end in rows]

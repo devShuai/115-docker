@@ -15,6 +15,7 @@ from cdp import CDP
 import links
 
 HOME = "https://115.com/?cid=0&offset=0&mode=wangpan"
+TRANSFER_PAGE = "chrome://transfer-frame/"
 
 _PRELUDE = r"""
   const uid = String(window.USER_ID || window.user_id || "");
@@ -33,16 +34,21 @@ _PRELUDE = r"""
     body.append("time", space.time);
     return getJSON("/web/lixian/?ct=lixian&ac=" + action, {method: "POST", body});
   }
-  async function findIn(cid, name) {
-    for (let offset = 0; ; offset += 1150) {
-      const page = await getJSON("https://webapi.115.com/files?aid=1&cid=" + encodeURIComponent(cid) +
-        "&o=user_ptime&asc=0&offset=" + offset + "&show_dir=1&limit=1150&format=json");
-      if (page.not_json) return {login: false};
-      if (!page.state) return {error: page.error || page.msg || "读取网盘目录失败"};
-      const entry = (page.data || []).find(item => item.n === name);
-      if (entry) return {item: {n: entry.n, pc: entry.pc, fid: entry.fid || "", cid: entry.cid || ""}};
-      if (offset + 1150 >= Number(page.count || 0)) return {missing: true};
-    }
+  function listDrive(cid, offset) {
+    // 115 applies the order the person chose in the drive; the download page sorts by name itself.
+    return getJSON("https://webapi.115.com/files?aid=1&cid=" + encodeURIComponent(cid) +
+      "&offset=" + (offset || 0) + "&show_dir=1&limit=1150&format=json");
+  }
+  async function folderId(parts) {
+    if (!parts.length) return "0";
+    const found = await getJSON("https://webapi.115.com/files/getid?path=" + encodeURIComponent("/" + parts.join("/")));
+    return found.state && found.id && String(found.id) !== "0" ? String(found.id) : null;
+  }
+  async function folderItem(cid) {
+    // The folder itself, so it can be downloaded whole; the drive root cannot.
+    if (!cid || String(cid) === "0") return null;
+    const info = await getJSON("https://webapi.115.com/category/get?cid=" + encodeURIComponent(cid));
+    return info.pick_code && info.file_name ? {n: info.file_name, pc: info.pick_code} : null;
   }
 """
 
@@ -62,24 +68,32 @@ ADD_OFFLINE = _page_function("""
 LIST_OFFLINE = _page_function("""
   if (!uid) return {login: false};
   return lixian("task_lists", {page: String(args.page || 1)});""")
-RESOLVE_PATH = _page_function("""
+BROWSE_DRIVE = _page_function("""
   if (!uid) return {login: false};
-  const parents = args.parts.slice(0, -1);
-  let cid = "0";
-  if (parents.length) {
-    const found = await getJSON("https://webapi.115.com/files/getid?path=" + encodeURIComponent("/" + parents.join("/")));
-    if (found.not_json) return {login: false};
-    if (!found.state || !found.id || String(found.id) === "0") return {missing: true};
-    cid = String(found.id);
-  }
-  return findIn(cid, args.parts[args.parts.length - 1]);""")
+  const page = await listDrive(args.cid, args.offset);
+  return page.not_json ? {login: false} : {page, folder: await folderItem(args.cid)};""")
+OPEN_PATH = _page_function("""
+  if (!uid) return {login: false};
+  const name = args.parts[args.parts.length - 1];
+  const parent = await folderId(args.parts.slice(0, -1));
+  if (parent === null) return {missing: true};
+  const page = await listDrive(parent);
+  if (page.not_json) return {login: false};
+  const entry = (page.data || []).find(item => item.n === name);
+  if (entry && !entry.fid) return {page: await listDrive(String(entry.cid)), folder: {n: entry.n, pc: entry.pc}};
+  if (entry) return {page, folder: await folderItem(parent), focus: name};
+  // Folders with more than one page of entries: ask for the folder id directly.
+  const direct = await folderId(args.parts);
+  return direct === null ? {missing: true} : {page: await listDrive(direct), folder: await folderItem(direct)};""")
 FOLDER_RESULT = _page_function("""
   if (!uid) return {login: false};
   const info = await getJSON("https://webapi.115.com/category/get?cid=" + encodeURIComponent(args.cid));
   if (info.not_json) return {login: false};
   if (info.file_name === args.name && info.pick_code)
     return {item: {n: info.file_name, pc: info.pick_code, fid: "", cid: args.cid}};
-  return findIn(args.cid, args.name);""")
+  const page = await listDrive(args.cid);
+  const entry = (page.data || []).find(item => item.n === args.name);
+  return entry ? {item: {n: entry.n, pc: entry.pc, fid: entry.fid || "", cid: entry.cid || ""}} : {missing: true};""")
 DOWNLOAD = _page_function("""
   if (!uid) return {login: false};
   if (!window.browserInterface || !browserInterface.CreateDownloadTask) return {bridge: false};
@@ -88,7 +102,7 @@ DOWNLOAD = _page_function("""
   return {state: true};""")
 SHARE_LIST = _page_function("""
   const query = new URLSearchParams({share_code: args.share_code, receive_code: args.receive_code,
-                                     cid: "", offset: "0", limit: "1150"});
+                                     cid: args.cid || "", offset: String(args.offset || 0), limit: "1150"});
   return getJSON("https://webapi.115.com/share/snap?" + query);""")
 SHARE_DOWNLOAD = _page_function("""
   if (!uid) return {login: false};
@@ -97,6 +111,19 @@ SHARE_DOWNLOAD = _page_function("""
   if (args.receive_code) payload.receive_code = args.receive_code;
   browserInterface.CreateSharedTask(encodeURIComponent(JSON.stringify(payload)));
   return {state: true};""")
+# Read-only: the browser's transfer list page (transfer-frame) keeps live state for each download.
+# _status: 0 downloading, 1 paused, 2 finished, 3 failed, 4 waiting.
+TRANSFERS = """async function () {
+  const data = window.downloadsData || {};
+  return Object.keys(data).map(key => {
+    const item = data[key];
+    return {id: String(item._id || item.id || key), name: item._file_name || "", status: Number(item._status),
+            paused: !!item._paused, progress: Number(item._progress) || 0, speed: String(item._speed || ""),
+            remain: Number(item._remain_time_sec) || 0, received: String(item._receive || ""),
+            total: String(item._total || ""), folder: !!item._is_folder, hash: Number(item._hash_progress) || 0,
+            error: String(item._error_msg || ""), ended: String(item._end_time || "")};
+  });
+}"""
 
 
 class BrowserUnavailable(RuntimeError):
@@ -131,8 +158,11 @@ class Cloud115:
         except OSError as error:
             raise BrowserUnavailable("115 浏览器未运行，或没有开启本地调试端口") from error
 
+    def _pages(self):
+        return [item for item in self._json("/json/list") if item.get("type") == "page"]
+
     def _tab(self, create):
-        pages = [item for item in self._json("/json/list") if item.get("type") == "page"]
+        pages = self._pages()
         for page in pages:
             if page.get("id") == self.target:
                 return page
@@ -151,7 +181,7 @@ class Cloud115:
             browser.close()
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
-            page = next((item for item in self._json("/json/list") if item.get("id") == self.target), None)
+            page = next((item for item in self._pages() if item.get("id") == self.target), None)
             if page and page.get("webSocketDebuggerUrl"):
                 client = self.connect(page["webSocketDebuggerUrl"])
                 try:
@@ -162,19 +192,20 @@ class Cloud115:
             time.sleep(0.5)
         raise BrowserUnavailable("打开 115 网盘页面超时")
 
+    def _evaluate(self, page, declaration, argument, timeout):
+        try:
+            client = self.connect(page["webSocketDebuggerUrl"])
+        except OSError as error:
+            raise BrowserUnavailable("无法连接 115 浏览器") from error
+        try:
+            return client.run(declaration, argument, timeout)
+        finally:
+            client.close()
+
     def run(self, declaration, argument=None, timeout=60, create=True):
         with self.lock:
-            try:
-                page = self._tab(create)
-                if page is None:
-                    return None
-                client = self.connect(page["webSocketDebuggerUrl"])
-            except OSError as error:
-                raise BrowserUnavailable("无法连接 115 浏览器") from error
-            try:
-                return client.run(declaration, argument, timeout)
-            finally:
-                client.close()
+            page = self._tab(create)
+            return None if page is None else self._evaluate(page, declaration, argument, timeout)
 
     def _call(self, declaration, argument=None, timeout=60):
         result = self.run(declaration, argument, timeout) or {}
@@ -212,32 +243,104 @@ class Cloud115:
             raise RuntimeError(_message(result, "读取云下载任务失败"))
         return result
 
-    def resolve(self, parts):
-        result = self._call(RESOLVE_PATH, {"parts": parts})
+    def find_offline(self, info_hash, pages=5):
+        for page in range(1, pages + 1):
+            result = self.offline_tasks(page)
+            for task in result.get("tasks") or []:
+                if task.get("info_hash") == info_hash:
+                    return task
+            if page >= int(result.get("page_count") or 1):
+                break
+        return None
+
+    @staticmethod
+    def _listing(result):
+        page = result.get("page") or {}
+        if not page.get("state"):
+            raise RuntimeError(_message(page, "读取网盘目录失败"))
+        listing = links.drive_listing(page)
+        folder = result.get("folder")
+        listing["folder"] = {"n": folder["n"], "pc": folder["pc"], "is_dir": True} if folder else None
+        if result.get("focus"):
+            listing["focus"] = result["focus"]
+        return listing
+
+    def browse_drive(self, cid, offset=0):
+        return self._listing(self._call(BROWSE_DRIVE, {"cid": str(cid or "0"), "offset": offset}))
+
+    def open_path(self, parts):
+        """A drive path -> the listing of that folder, or of a file's folder with the file in focus."""
+        result = self._call(OPEN_PATH, {"parts": parts})
         if result.get("missing"):
             raise ValueError("网盘里找不到：/" + "/".join(parts))
-        if "item" not in result:
-            raise RuntimeError(_message(result, "读取网盘目录失败"))
-        return links.drive_item(result["item"])
+        return self._listing(result)
+
+    def resolve(self, parts):
+        listing = self.open_path(parts)
+        if "focus" in listing:
+            entry = next(item for item in listing["items"] if item["name"] == listing["focus"])
+            return {"n": entry["name"], "pc": entry["pc"], "is_dir": False}
+        if not listing["folder"]:
+            raise RuntimeError("读取网盘目录失败")
+        return listing["folder"]
 
     def download(self, items):
         self._call(DOWNLOAD, {"items": items})
 
     def offline_result(self, task):
-        """The cloud file or folder an offline task produced, or None while it is not ready."""
+        """The cloud file or folder a finished offline task produced, or None while it is not ready."""
+        # move: 0 while the files are still being moved into the drive, -1 when that failed.
+        if int(task.get("status") or 0) != 2 or str(task.get("move", 1)) in ("0", "-1"):
+            return None
+        if task.get("pick_code") and str(task.get("file_category")) in ("0", "1"):
+            # file_category 0 is a folder (file_id is that folder); 1 is a file (file_id is its folder).
+            return {"n": task.get("name") or "", "pc": task["pick_code"], "is_dir": str(task["file_category"]) == "0"}
         cid, name = str(task.get("file_id") or ""), task.get("name") or ""
         if not cid or not name:
             return None
         result = self._call(FOLDER_RESULT, {"cid": cid, "name": name})
         return links.drive_item(result["item"]) if "item" in result else None
 
-    def share(self, share_code, receive_code, page_url):
-        listing = self._call(SHARE_LIST, {"share_code": share_code, "receive_code": receive_code})
-        if not listing.get("state"):
-            raise ValueError(_message(listing, "分享链接无效、已过期或提取码错误"))
-        items = [links.share_item(entry) for entry in (listing.get("data") or {}).get("list") or []]
+    def offline_content(self, task):
+        """What a finished offline task produced, as a listing to pick from for the NAS."""
+        item = self.offline_result(task)
+        if item is None:
+            raise ValueError("云下载还没有完成，或文件还在转存到网盘")
+        if item["is_dir"] and task.get("file_id"):
+            listing = self.browse_drive(str(task["file_id"]))
+            listing["folder"] = item
+        else:
+            listing = {"kind": "drive", "cid": str(task.get("file_id") or ""), "path": [], "folder": None,
+                       "count": 1, "offset": 0, "truncated": False,
+                       "items": [{"id": item["pc"], "name": item["n"], "pc": item["pc"], "is_dir": False,
+                                  "size": int(task.get("size") or 0), "cid": ""}]}
+        listing["result"] = item
+        return listing
+
+    def browse_share(self, share_code, receive_code, cid="", offset=0):
+        snap = self._call(SHARE_LIST, {"share_code": share_code, "receive_code": receive_code, "cid": cid,
+                                       "offset": offset})
+        if not snap.get("state"):
+            raise ValueError(_message(snap, "分享链接无效、已过期或提取码错误"))
+        return links.share_listing(snap, cid, offset)
+
+    def share(self, share_code, receive_code, page_url, items=None):
+        """Download share items to the NAS; without items, everything at the share's top level."""
+        if items is None:
+            items = [{"n": entry["name"], "pc": "", "is_dir": entry["is_dir"], "sc": entry["sc"]}
+                     for entry in self.browse_share(share_code, receive_code)["items"]]
         if not items:
             raise ValueError("分享里没有可下载的文件")
         self._call(SHARE_DOWNLOAD, {"items": items, "share_code": share_code,
                                     "receive_code": receive_code, "ref_url": page_url})
         return [item["n"] for item in items]
+
+    def transfers(self):
+        """Live transfers from the browser's transfer list page, or None while that page is closed.
+
+        It reads a different page than the 115.com tab, so it does not wait for slower 115 calls.
+        """
+        page = next((item for item in self._pages() if item.get("url", "").startswith(TRANSFER_PAGE)), None)
+        if page is None or not page.get("webSocketDebuggerUrl"):
+            return None
+        return self._evaluate(page, TRANSFERS, None, 15)

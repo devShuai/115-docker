@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import threading
 import time
@@ -22,10 +23,16 @@ import links  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 FILES = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-         "/style.css": ("style.css", "text/css; charset=utf-8")}
+         "/style.css": ("style.css", "text/css; charset=utf-8"), "/icon.svg": ("icon.svg", "image/svg+xml")}
 MAX_BODY = 64 * 1024
 FAILURE_LIMIT, FAILURE_WINDOW = 10, 600
 OFFLINE_STATES = {-1: "失败", 0: "已停止", 1: "下载中", 2: "已完成"}
+OFFLINE_KEYS = {-1: "failed", 0: "waiting", 1: "downloading", 2: "done"}
+DISPLAY_KEYS = {"finished": "done", "downloading": "downloading", "waiting": "waiting", "failed": "failed",
+                "forbidden": "failed"}
+TRANSFER_KEYS = {0: "downloading", 1: "paused", 2: "done", 3: "failed", 4: "waiting"}
+ACTIVE = ("downloading", "verifying", "waiting")
+_AMOUNT = re.compile(r"\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGTP]?)(?:i?B)?", re.IGNORECASE)
 HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY",
            "Referrer-Policy": "no-referrer",
            "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; "
@@ -39,11 +46,98 @@ class NotFound(Exception):
     """Unknown API path."""
 
 
-def offline_view(task):
-    status = int(task.get("status") or 0)
-    return {"hash": task.get("info_hash"), "name": task.get("name") or task.get("url") or "",
-            "status": OFFLINE_STATES.get(status, str(status)), "percent": float(task.get("percentDone") or 0),
-            "size": int(task.get("size") or 0), "added": task.get("add_time")}
+def _number(value, kind=int):
+    try:
+        return kind(float(value or 0))
+    except (TypeError, ValueError):
+        return kind(0)
+
+
+def human_size(value):
+    """Same format as the page: 812 B, 5.3 GB, 812 MB."""
+    units = ("B", "KB", "MB", "GB", "TB")
+    value, index = float(value or 0), 0
+    while value >= 1024 and index < len(units) - 1:
+        value, index = value / 1024, index + 1
+    return f"{value:.{1 if index and value < 100 else 0}f} {units[index]}"
+
+
+def amount(text):
+    """'1.25MB/s' or '3.4GB', as the transfer list writes them -> bytes."""
+    match = _AMOUNT.match(text or "")
+    return float(match.group(1)) * 1024 ** " KMGTP".index(match.group(2).upper() or " ") if match else None
+
+
+def _tidy(text, suffix=""):
+    value = amount(text)
+    return (text or "") if value is None else human_size(value) + suffix
+
+
+def offline_view(task, auto=None):
+    status = _number(task.get("status"))
+    view = {"hash": task.get("info_hash"), "name": task.get("name") or task.get("url") or "",
+            "status": OFFLINE_STATES.get(status, str(status)),
+            "state": DISPLAY_KEYS.get(task.get("display_status")) or OFFLINE_KEYS.get(status, "waiting"),
+            "text": task.get("status_text") or OFFLINE_STATES.get(status, ""),
+            "percent": _number(task.get("percentDone"), float), "size": _number(task.get("size")),
+            "speed": _number(task.get("rateDownload")), "left": _number(task.get("left_time")),
+            "added": task.get("add_time"), "folder": str(task.get("file_category")) == "0",
+            "ready": status == 2 and bool(task.get("pick_code")) and str(task.get("move", 1)) not in ("0", "-1")}
+    if auto:
+        view["auto"] = auto
+    return view
+
+
+def transfer_view(item):
+    """One entry of the browser's live transfer list."""
+    state = TRANSFER_KEYS.get(item.get("status"), "waiting")
+    hashed = _number(item.get("hash"), float)
+    if state == "downloading" and item.get("paused"):
+        state = "paused"
+    elif state == "downloading" and hashed > 0.0001 and (not item.get("folder") or hashed < 1):
+        # Downloaded; the browser is checking the file against 115's hash.
+        state = "verifying"
+    received, total = item.get("received") or "", item.get("total") or ""
+    return {"id": str(item.get("id")), "name": item.get("name") or "", "state": state,
+            "progress": min(1.0, max(0.0, _number(item.get("progress"), float))),
+            "verify": min(1.0, hashed) if state == "verifying" else None,
+            "speed": _tidy(item.get("speed"), "/s") if state == "downloading" else "",
+            "remain": _number(item.get("remain")) if state == "downloading" else 0,
+            "received": "" if amount(received) == 0 else _tidy(received),
+            "total": "" if total in ("unknown", "大小未知") else _tidy(total),
+            "folder": bool(item.get("folder")), "error": item.get("error") or "", "ended": item.get("ended") or ""}
+
+
+def history_transfer(row, index):
+    """A download history row, used while the browser's transfer list page is closed."""
+    received, total, state = row["received"] or 0, row["total"] or 0, row.get("key") or "failed"
+    ended = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(row["finished"])) if row.get("finished") else ""
+    return {"id": f"h{index}", "name": row["name"], "state": state,
+            "progress": 1.0 if state == "done" else (min(1.0, received / total) if total > 0 else 0.0),
+            "verify": None, "speed": "", "remain": 0, "received": human_size(received),
+            "total": human_size(total) if total > 0 else "", "folder": False, "error": "", "ended": ended}
+
+
+def transfers_view(items, live):
+    groups = {"downloading": 0, "verifying": 0, "waiting": 1, "paused": 2}
+    if live:
+        items = sorted(items, key=lambda item: -_number(item["id"]))
+    items = sorted(items, key=lambda item: groups.get(item["state"], 3))[:50]
+    active = [item for item in items if item["state"] in ACTIVE]
+    speed = sum(amount(item["speed"]) or 0 for item in active)
+    sized = [(amount(item["total"]), item["progress"]) for item in active if amount(item["total"])]
+    if sized:
+        progress = sum(size * done for size, done in sized) / sum(size for size, _ in sized)
+    else:
+        progress = sum(item["progress"] for item in active) / len(active) if active else None
+    return {"live": live, "items": items, "active": len(active),
+            "speed": human_size(speed) + "/s" if speed else "", "progress": progress}
+
+
+def _text(value):
+    if isinstance(value, str):
+        return value
+    return "\n".join(str(item) for item in value) if isinstance(value, list) else ""
 
 
 class App:
@@ -88,33 +182,81 @@ class App:
         if path == "/api/offline":
             page = int((query.get("page") or ["1"])[0])
             result = self.cloud.offline_tasks(max(1, min(page, 100)))
-            return {"tasks": [offline_view(task) for task in result.get("tasks") or []],
+            watched = {task["hash"]: task["status"] for task in self.watcher.snapshot()}
+            return {"tasks": [offline_view(task, watched.get(task.get("info_hash"))) for task in result.get("tasks") or []],
                     "count": int(result.get("count") or 0)}
+        if path == "/api/offline/content":
+            task = self.cloud.find_offline(links.task_hash((query.get("hash") or [""])[0]))
+            if task is None:
+                raise ValueError("最近的云下载任务里找不到它")
+            listing = self.cloud.offline_content(task)
+            listing["task"] = offline_view(task)
+            return listing
+        if path == "/api/transfers":
+            try:
+                live = self.cloud.transfers()
+            except (client.BrowserUnavailable, RuntimeError, OSError):
+                live = None
+            if live is not None:
+                return transfers_view([transfer_view(item) for item in live], True)
+            rows = history.recent_downloads(self.profile_dir)
+            return transfers_view([history_transfer(row, index) for index, row in enumerate(rows)], False)
         if path == "/api/local":
             return {"downloads": history.recent_downloads(self.profile_dir)}
         if path == "/api/watch":
             return {"tasks": self.watcher.snapshot()}
         raise NotFound
 
+    def _share(self, body, cid="", offset=0):
+        code = body.get("receive_code")
+        share_code, receive_code, page = links.share_link(_text(body.get("url") or body.get("text")),
+                                                          code if isinstance(code, str) else "")
+        listing = self.cloud.browse_share(share_code, receive_code, cid, offset)
+        listing["share"] = {"url": page, "receive_code": receive_code}
+        return listing
+
     def post(self, path, body):
         if path == "/api/offline":
-            urls = links.offline_links(body.get("links") if isinstance(body.get("links"), str)
-                                       else "\n".join(body.get("links") or []))
+            urls = links.offline_links(_text(body.get("links")))
             result = self.cloud.add_offline(urls)
             added = [item for item in result.get("result") or [] if item.get("state")]
-            failed = [{"url": item.get("url", ""), "error": item.get("error_msg") or item.get("error") or "失败"}
+            failed = [{"url": item.get("url", ""), "error": item.get("error_msg") or item.get("error") or "失败",
+                       "hash": item.get("info_hash") or ""}
                       for item in result.get("result") or [] if not item.get("state")]
             if body.get("to_nas"):
                 self.watcher.watch(added)
             return {"added": len(added) if result.get("result") else len(urls), "failed": failed,
-                    "to_nas": bool(body.get("to_nas"))}
+                    "to_nas": bool(body.get("to_nas")),
+                    "tasks": [{"hash": item["info_hash"], "name": item.get("name") or item.get("url", "")}
+                              for item in added if item.get("info_hash")]}
+        if path == "/api/inspect":
+            text = _text(body.get("text")).strip()
+            if not text:
+                raise ValueError("请粘贴链接，或填写网盘路径")
+            kind = links.detect(text)
+            if kind == "links":
+                return {"kind": "links", "links": links.offline_links(text)}
+            if kind == "path":
+                return self.cloud.open_path(links.drive_path(text))
+            return self._share({"url": text, "receive_code": body.get("receive_code")})
+        if path == "/api/browse":
+            start = links.offset(body.get("offset"))
+            if body.get("kind") == "share":
+                return self._share(body, links.folder_id(body.get("cid"), share=True), start)
+            return self.cloud.browse_drive(links.folder_id(body.get("cid", "0")), start)
         if path == "/api/download":
-            item = self.cloud.resolve(links.drive_path(body.get("path")))
-            self.cloud.download([item])
-            return {"name": item["n"], "is_dir": item["is_dir"]}
+            if "items" in body:
+                items = links.picked_items(body["items"])
+            else:
+                items = [self.cloud.resolve(links.drive_path(_text(body.get("path"))))]
+            self.cloud.download(items)
+            return {"count": len(items), "names": [item["n"] for item in items][:20],
+                    "name": items[0]["n"], "is_dir": items[0]["is_dir"]}
         if path == "/api/share":
-            share_code, receive_code, page = links.share_link(body.get("url"), body.get("receive_code") or "")
-            names = self.cloud.share(share_code, receive_code, page)
+            code = body.get("receive_code")
+            share_code, receive_code, page = links.share_link(_text(body.get("url")), code if isinstance(code, str) else "")
+            items = links.picked_items(body["items"], share=True) if "items" in body else None
+            names = self.cloud.share(share_code, receive_code, page, items)
             return {"count": len(names), "names": names[:20]}
         raise NotFound
 

@@ -68,7 +68,114 @@ def drive_item(entry):
 
 
 def share_item(entry):
-    """A share listing entry -> CreateSharedTask item, as built by 115's share page."""
-    is_dir = entry.get("p") == 0 or not entry.get("fid")
+    """A share listing entry -> CreateSharedTask item, as built by 115's share page (p == 0 is a folder)."""
+    is_dir = str(entry["p"]) == "0" if "p" in entry else not entry.get("fid")
     return {"n": entry["n"], "pc": "", "is_dir": is_dir,
             "sc": str(entry.get("cid") if is_dir else entry.get("fid") or "")}
+
+
+def _size(value):
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def drive_listing(page):
+    """A webapi.115.com/files page -> the listing the download page shows."""
+    entries = page.get("data") or []
+    path = [{"cid": str(item.get("cid")), "name": item.get("name") or ""} for item in page.get("path") or []]
+    if path and path[0]["cid"] == "0":
+        path[0]["name"] = "网盘"
+    items = []
+    for entry in entries:
+        item = drive_item(entry)
+        items.append({"id": str(entry.get("fid") or entry.get("cid")), "name": item["n"], "pc": item["pc"],
+                      "is_dir": item["is_dir"], "size": 0 if item["is_dir"] else _size(entry.get("s")),
+                      "cid": str(entry.get("cid")) if item["is_dir"] else ""})
+    offset = _size(page.get("offset"))
+    count = _size(page.get("count")) or offset + len(items)
+    # truncated: more entries follow; the page asks for them with the next offset.
+    return {"kind": "drive", "cid": str(page.get("cid", path[-1]["cid"] if path else "0")), "path": path,
+            "count": count, "offset": offset, "truncated": count > offset + len(items), "items": items}
+
+
+def share_listing(snap, cid="", offset=0):
+    """A webapi.115.com/share/snap page -> the listing the download page shows."""
+    data = snap.get("data") or {}
+    items = []
+    for entry in data.get("list") or []:
+        item = share_item(entry)
+        items.append({"id": item["sc"], "name": item["n"], "sc": item["sc"], "is_dir": item["is_dir"],
+                      "size": 0 if item["is_dir"] else _size(entry.get("s")), "cid": item["sc"] if item["is_dir"] else ""})
+    count = _size(data.get("count")) or offset + len(items)
+    info = data.get("shareinfo") or {}
+    return {"kind": "share", "cid": str(cid or ""), "title": str(info.get("share_title") or ""),
+            "count": count, "offset": offset, "truncated": count > offset + len(items), "items": items}
+
+
+def detect(text):
+    """What was pasted: 'share' (a 115 share link), 'path' (a drive path) or 'links' (offline links)."""
+    text = (text or "").strip()
+    if _SHARE_URL.search(text):
+        return "share"
+    return "path" if text[:1] in ("/", "\\") else "links"
+
+
+MAX_ITEMS = 1150
+_PICK_CODE = re.compile(r"[A-Za-z0-9]{1,64}")
+_SHARE_ID = re.compile(r"[0-9]{1,32}")
+_TASK_HASH = re.compile(r"[0-9A-Za-z]{8,64}")
+
+
+def folder_id(value, share=False):
+    """Drive folders are numeric ids ("0" is the root); a share's top level is ""."""
+    value = "" if value is None else str(value)
+    if (share and value == "") or _SHARE_ID.fullmatch(value):
+        return value
+    raise ValueError("目录 ID 无效")
+
+
+def offset(value):
+    """Where the next page of a long folder starts."""
+    if isinstance(value, bool) or not isinstance(value, (int, str, type(None))):
+        raise ValueError("分页位置无效")
+    text = str(value or 0)
+    if not text.isdigit() or int(text) > 10_000_000:
+        raise ValueError("分页位置无效")
+    return int(text)
+
+
+def task_hash(value):
+    if isinstance(value, str) and _TASK_HASH.fullmatch(value):
+        return value
+    raise ValueError("云下载任务 ID 无效")
+
+
+def _name(value):
+    # Names become file names on the NAS; refuse anything that could leave the download folder.
+    if (not isinstance(value, str) or not value or len(value) > 255 or value in (".", "..")
+            or any(char in value for char in "/\\") or any(ord(char) < 32 for char in value)):
+        raise ValueError("文件名无效")
+    return value
+
+
+def picked_items(raw, share=False):
+    """Validate items the page sends back: drive {n, pc, is_dir} or share {n, sc, is_dir}."""
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("请先勾选要下载的内容")
+    if len(raw) > MAX_ITEMS:
+        raise ValueError(f"一次最多下载 {MAX_ITEMS} 项")
+    items = []
+    for entry in raw:
+        if not isinstance(entry, dict) or not isinstance(entry.get("is_dir"), bool):
+            raise ValueError("下载项格式无效")
+        key, pattern = ("sc", _SHARE_ID) if share else ("pc", _PICK_CODE)
+        value = entry.get(key)
+        if not isinstance(value, str) or not pattern.fullmatch(value):
+            raise ValueError("下载项格式无效")
+        item = {"n": _name(entry.get("n")), "pc": "" if share else value, "is_dir": entry["is_dir"]}
+        if share:
+            item["sc"] = value
+        items.append(item)
+    return items

@@ -257,7 +257,9 @@ def api_request(method, path, body=None, headers=None, credentials='115:'+PASSWO
 def verify_download_api(debug_port):
     wait_for(lambda: api_request('GET', '/', credentials=None)[0] == 401, 'download API listening')
     status, page = api_request('GET', '/')
-    assert status == 200 and '115 添加下载' in page.decode(), f'Download page failed: {status}'
+    assert status == 200 and '<title>115 下载</title>' in page.decode(), f'Download page failed: {status}'
+    for asset in ('/app.js', '/style.css', '/icon.svg'):
+        assert api_request('GET', asset)[0] == 200, asset
     status, body = api_request('GET', '/api/status')
     state = json.loads(body)
     # The CI browser is not logged in to 115; the API must see the browser and must not claim a login.
@@ -267,6 +269,15 @@ def verify_download_api(debug_port):
     assert api_request('POST', '/api/offline', '{}', {**json_type, 'Origin': 'http://attacker.example'})[0] == 403
     status, body = api_request('POST', '/api/offline', json.dumps({'links': 'javascript:alert(1)'}), json_type)
     assert status == 400 and '无法识别' in json.loads(body)['error'], body
+    magnet = 'magnet:?xt=urn:btih:' + 'a' * 40
+    status, body = api_request('POST', '/api/inspect', json.dumps({'text': magnet}), json_type)
+    assert status == 200 and json.loads(body) == {'kind': 'links', 'links': [magnet]}, body
+    status, body = api_request('POST', '/api/download', json.dumps({'items': [{'n': '../x', 'pc': 'a', 'is_dir': False}]}),
+                               json_type)
+    assert status == 400, body
+    # No transfer list page is open in CI, so progress falls back to the download history.
+    status, body = api_request('GET', '/api/transfers')
+    assert status == 200 and json.loads(body)['live'] is False, body
     # Chromium must keep its DevTools port on loopback; Compose never publishes it.
     listeners = [line.split()[1] for line in Path('/proc/net/tcp').read_text().splitlines()[1:]
                  if line.split()[3] == '0A' and int(line.split()[1].split(':')[1], 16) == debug_port]
