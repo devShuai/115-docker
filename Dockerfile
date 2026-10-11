@@ -52,6 +52,8 @@ RUN mkdir -p /etc/115 /opt/Downloads /opt/.cache /opt/.config \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo Asia/Shanghai >/etc/timezone \
     && ln -sf /opt/115/115.sh /usr/local/115Browser/115.sh \
+    && printf '#!/bin/sh\nexec python3 /opt/115/downloader/cli.py "$@"\n' >/usr/local/bin/115dl \
+    && chmod 755 /usr/local/bin/115dl \
     && rsvg-convert -w 1920 -h 1080 /usr/share/backgrounds/115/desktop.svg \
        -o /usr/share/backgrounds/115/desktop.png \
     && test -x /usr/local/115Browser/115Browser \
@@ -64,7 +66,10 @@ RUN mkdir -p /etc/115 /opt/Downloads /opt/.cache /opt/.config \
     && test -x /usr/bin/xfwm4 \
     && test -f /usr/share/themes/Arc-Dark/xfwm4/themerc \
     && test -f /usr/share/applications/115Browser.desktop \
-    && test -f /opt/115/downloader/server.py
+    && test -f /opt/115/downloader/server.py \
+    && test -f /opt/115/downloader/session.py \
+    && test -x /usr/local/bin/115dl \
+    && python3 -c "import ast,sys; [ast.parse(open(f).read()) for f in sys.argv[1:]]" /opt/115/downloader/cli.py /opt/115/downloader/session.py
 
 EXPOSE 1150 1151
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

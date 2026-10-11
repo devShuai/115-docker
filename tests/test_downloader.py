@@ -1,4 +1,5 @@
 import base64
+import contextlib
 import http.client
 import io
 import json
@@ -13,11 +14,13 @@ from urllib.error import URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "runtime/downloader"))
 import auth  # noqa: E402
+import cli  # noqa: E402
 import client  # noqa: E402
 import history  # noqa: E402
 import jobs  # noqa: E402
 import links  # noqa: E402
 import server  # noqa: E402
+import session  # noqa: E402
 
 MAGNET = "magnet:?xt=urn:btih:" + "a" * 40 + "&dn=test"
 
@@ -158,8 +161,9 @@ class HistoryTests(unittest.TestCase):
 
 class FakeBrowser:
     """Stands in for the DevTools HTTP endpoint and its WebSocket connections."""
-    def __init__(self, pages=(), results=(), up=True):
+    def __init__(self, pages=(), results=(), up=True, cookies=()):
         self.pages, self.results, self.up, self.log = list(pages), list(results), up, []
+        self.cookies = {(cookie["name"], cookie["domain"]): dict(cookie) for cookie in cookies}
 
     def opener(self, url, timeout=5):
         if not self.up:
@@ -174,6 +178,17 @@ class FakeBrowser:
         class Connection:
             def call(self, method, params=None, timeout=15):
                 browser.log.append((url, method, params))
+                if method == "Storage.getCookies":
+                    return {"cookies": [dict(cookie) for cookie in browser.cookies.values()]}
+                if method == "Storage.setCookies":
+                    for cookie in params["cookies"]:
+                        browser.cookies[(cookie["name"], cookie["domain"])] = dict(cookie, session="expires" not in cookie)
+                    return {}
+                if method == "Storage.clearCookies":
+                    browser.cookies.clear()
+                    return {}
+                if method == "Page.reload":
+                    return {}
                 browser.pages.append({"id": "new", "type": "page", "url": params["url"], "webSocketDebuggerUrl": "ws://new"})
                 return {"targetId": "new"}
 
@@ -498,6 +513,12 @@ class ServerTests(unittest.TestCase):
         status, _, data = self.request("POST", path, json.dumps(payload), {"Content-Type": "application/json", **(headers or {})})
         return status, json.loads(data)
 
+    def test_endpoints_are_listed_for_the_cli(self):
+        status, _, data = self.request("GET", "/api/endpoints")
+        paths = {item["path"] for item in json.loads(data)["endpoints"]}
+        self.assertEqual(status, 200)
+        self.assertLessEqual({"/api/status", "/api/inspect", "/api/transfers", "/api/endpoints"}, paths)
+
     def test_authentication_and_security_headers(self):
         status, headers, _ = self.request("GET", "/", password=None)
         self.assertEqual(status, 401)
@@ -641,6 +662,105 @@ class ViewTests(unittest.TestCase):
         self.assertEqual(server.history_transfer(row, 3)["progress"], 0.5)
         self.assertEqual(server.history_transfer(row, 3)["id"], "h3")
         self.assertEqual(server.history_transfer(dict(row, key="done", total=0), 0)["progress"], 1.0)
+
+
+LOGIN = [{"name": name, "value": "v" + name, "domain": ".115.com", "path": "/", "secure": True,
+          "httpOnly": True, "sameSite": "None"} for name in ("CID", "SEID", "UID", "KID")]
+
+
+class SessionTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.path = Path(self.temporary.name) / "115-session.json"
+        self.now = 1000.0
+
+    def keeper(self, browser, **kwargs):
+        return session.SessionKeeper(browser.cloud(), self.path, clock=lambda: self.now,
+                                     log=lambda *a, **k: None, **kwargs)
+
+    def present(self, browser):
+        return {cookie["name"]: cookie for cookie in session.login_cookies(browser.connect("ws://browser"))}
+
+    def test_saves_login_cookies_and_restores_them_after_a_restart(self):
+        # acw_tc is not a login cookie and must not be saved.
+        browser = FakeBrowser(cookies=LOGIN + [{"name": "acw_tc", "value": "x", "domain": "115.com"}])
+        keeper = self.keeper(browser)
+        self.assertTrue(keeper.save())
+        self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
+        saved = json.loads(self.path.read_text())
+        self.assertEqual({cookie["name"] for cookie in saved["cookies"]}, {"CID", "SEID", "UID", "KID"})
+        unchanged = self.path.stat().st_mtime_ns
+        self.assertTrue(keeper.save())  # No change, so the file is not rewritten.
+        self.assertEqual(self.path.stat().st_mtime_ns, unchanged)
+        browser.cookies.clear()  # A restart dropped the session cookies.
+        self.assertFalse(self.present(browser))
+        self.assertTrue(keeper.restore())
+        restored = self.present(browser)
+        self.assertEqual(set(restored), {"CID", "SEID", "UID", "KID"})
+        self.assertTrue(all("expires" in cookie for cookie in restored.values()), "restored cookies must be persistent")
+        self.assertFalse(keeper.restore(), "already logged in")
+
+    def test_save_needs_a_login_and_restore_needs_a_file(self):
+        browser = FakeBrowser(cookies=[{"name": "CID", "value": "x", "domain": ".115.com"}])  # SEID/UID missing
+        keeper = self.keeper(browser)
+        self.assertFalse(keeper.save())
+        self.assertFalse(self.path.exists())
+        self.assertFalse(keeper.restore())
+
+    def test_restore_stops_after_repeated_failures(self):
+        browser = FakeBrowser(cookies=LOGIN)
+        keeper = self.keeper(browser, retry=300)
+        keeper.save()
+        browser.cookies.clear()
+        attempts = []
+        keeper.restore = lambda: attempts.append(1)  # Pretends to inject; 115 keeps rejecting it.
+        for _ in range(session.MAX_ATTEMPTS + 3):
+            keeper.tick()
+            self.now += 301  # Past the retry delay, so only the attempt cap stops it.
+        self.assertEqual(len(attempts), session.MAX_ATTEMPTS)
+        # A later tick that finds a login resets the counter, so a future loss retries.
+        browser.cookies = {(c["name"], c["domain"]): dict(c) for c in LOGIN}
+        keeper.tick()
+        self.assertIsNone(keeper.attempt_mtime)
+
+
+class CliTests(unittest.TestCase):
+    def setUp(self):
+        self.cloud, self.watcher = ServerCloud(), FakeWatcher()
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        app = server.App(self.cloud, self.watcher, "115", auth.encode("Check123"), self.temporary.name)
+        self.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.handler_for(app))
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.addCleanup(self.httpd.server_close)
+        self.addCleanup(self.httpd.shutdown)
+        self.base = ["--url", f"http://127.0.0.1:{self.httpd.server_address[1]}", "--user", "115", "--password", "Check123"]
+
+    def run_cli(self, *args):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = cli.main(self.base + list(args))
+        return code, out.getvalue()
+
+    def test_apis_status_and_download(self):
+        code, out = self.run_cli("apis")
+        self.assertEqual(code, 0)
+        self.assertIn("/api/status", out)
+        self.assertIn("inspect", out)
+        self.assertEqual(self.run_cli("status")[1].strip(), "115 已登录（user_id 42）")
+        code, _ = self.run_cli("download", "--path", "/电影/合集")
+        self.assertEqual(code, 0)
+        self.assertIn(("download", [{"n": "合集", "pc": "pc1", "is_dir": True}]), self.cloud.calls)
+        code, out = self.run_cli("--json", "offline")
+        self.assertEqual(json.loads(out)["tasks"][0]["name"], "电影")
+
+    def test_wrong_password_reports_an_auth_error(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = cli.main([self.base[0], self.base[1], "--user", "115", "--password", "nope", "status"])
+        self.assertEqual(code, 2)
+        self.assertIn("认证", err.getvalue())
 
 
 if __name__ == "__main__":

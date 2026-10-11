@@ -95,6 +95,24 @@
       <p id="nas-note" class="note" hidden>115 浏览器的传输列表没有打开，这里显示的是下载记录，没有实时速度。</p>
       <ul id="cloud" class="tasks" role="tabpanel" aria-labelledby="tab-cloud" hidden></ul>
     </section>
+
+    <details class="panel api">
+      <summary>命令行与接口</summary>
+      <div class="api-body">
+        <p class="api-intro">除本页外，还可以用命令行客户端或直接调用 JSON 接口，用户名和密码与本页相同。</p>
+        <pre class="api-cli"><code># 容器内
+docker exec -it 115-docker 115dl apis
+docker exec -it 115-docker 115dl add 'magnet:?xt=urn:btih:...' --to-nas
+# 远程（经隧道或反代）
+DOWNLOAD_API_URL=https://你的域名 115dl status
+# 直接调用接口
+curl -u 用户:密码 http://127.0.0.1:1151/api/status</code></pre>
+        <table class="api-table">
+          <thead><tr><th>命令</th><th>方法</th><th>路径</th><th>说明</th></tr></thead>
+          <tbody id="api-rows"></tbody>
+        </table>
+      </div>
+    </details>
   </main>
 </body>
 </html>

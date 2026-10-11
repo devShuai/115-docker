@@ -794,6 +794,21 @@ $("auto").addEventListener("change", () => {
   }
 });
 
+async function loadEndpoints() {
+  try {
+    const data = await api("api/endpoints");
+    const rows = data.endpoints.map((item) =>
+      h("tr", null, h("td", {text: item.cmd}), h("td", {text: item.method}),
+        h("td", null, h("code", {text: item.path})), h("td", {text: item.summary})));
+    $("api-rows").replaceChildren(...rows);
+  } catch (error) {
+    $("api-rows").replaceChildren(h("tr", null, h("td", {colspan: "4", text: error.message})));
+  }
+}
+document.querySelector(".api").addEventListener("toggle", function () {
+  if (this.open && !$("api-rows").childElementCount) loadEndpoints();
+}, {once: false});
+
 const kickStatus = every(refreshStatus, () => 15000);
 const kickTransfers = every(refreshTransfers, () => (transfers.active || Date.now() < boostUntil ? 2000 : 8000));
 const kickCloud = every(refreshCloud, () => (waiting.size ? 4000 : tab === "cloud" ? 20000 : 60000));

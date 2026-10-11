@@ -20,6 +20,7 @@ import client  # noqa: E402
 import history  # noqa: E402
 import jobs  # noqa: E402
 import links  # noqa: E402
+import session  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 FILES = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"),
@@ -40,6 +41,42 @@ HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-
 ERRORS = ((ValueError, HTTPStatus.BAD_REQUEST), (client.NotLoggedIn, HTTPStatus.CONFLICT),
           (client.VerificationRequired, HTTPStatus.CONFLICT), (client.BrowserUnavailable, HTTPStatus.SERVICE_UNAVAILABLE),
           (RuntimeError, HTTPStatus.BAD_GATEWAY))
+
+# The API surface, shared by GET /api/endpoints, the command-line client and the page.
+ENDPOINTS = [
+    {"cmd": "status", "method": "GET", "path": "/api/status", "summary": "登录与浏览器状态", "params": []},
+    {"cmd": "apis", "method": "GET", "path": "/api/endpoints", "summary": "列出所有接口", "params": []},
+    {"cmd": "inspect", "method": "POST", "path": "/api/inspect", "summary": "识别链接或网盘路径，列出可下载内容",
+     "params": [{"name": "text", "in": "body", "required": True, "desc": "链接、分享链接或网盘路径"},
+                {"name": "receive_code", "in": "body", "desc": "分享提取码"},
+                {"name": "sort", "in": "body", "desc": "time|name|size"},
+                {"name": "asc", "in": "body", "desc": "true 升序"}]},
+    {"cmd": "browse", "method": "POST", "path": "/api/browse", "summary": "浏览网盘或分享目录",
+     "params": [{"name": "kind", "in": "body", "desc": "drive（默认）或 share"},
+                {"name": "cid", "in": "body", "desc": "目录 ID，网盘根为 0"},
+                {"name": "url", "in": "body", "desc": "分享链接（kind=share）"},
+                {"name": "receive_code", "in": "body", "desc": "分享提取码"},
+                {"name": "offset", "in": "body", "desc": "翻页位置"},
+                {"name": "sort", "in": "body", "desc": "time|name|size"}, {"name": "asc", "in": "body", "desc": "true 升序"}]},
+    {"cmd": "offline", "method": "GET", "path": "/api/offline", "summary": "云下载任务列表",
+     "params": [{"name": "page", "in": "query", "desc": "页码，默认 1"}]},
+    {"cmd": "add", "method": "POST", "path": "/api/offline", "summary": "把链接加入 115 云下载",
+     "params": [{"name": "links", "in": "body", "required": True, "desc": "磁力/ed2k/HTTP/FTP，每行一个"},
+                {"name": "to_nas", "in": "body", "desc": "true 时完成后整体下到 NAS"}]},
+    {"cmd": "content", "method": "GET", "path": "/api/offline/content", "summary": "云下载完成后的内容",
+     "params": [{"name": "hash", "in": "query", "required": True, "desc": "任务 info_hash"},
+                {"name": "sort", "in": "query", "desc": "time|name|size"}, {"name": "asc", "in": "query", "desc": "1 升序"}]},
+    {"cmd": "download", "method": "POST", "path": "/api/download", "summary": "下载网盘内容到 NAS",
+     "params": [{"name": "path", "in": "body", "desc": "网盘路径（整项下载）"},
+                {"name": "items", "in": "body", "desc": "勾选的条目 [{n, pc, is_dir}]"}]},
+    {"cmd": "share", "method": "POST", "path": "/api/share", "summary": "下载分享内容到 NAS",
+     "params": [{"name": "url", "in": "body", "required": True, "desc": "115 分享链接"},
+                {"name": "receive_code", "in": "body", "desc": "提取码"},
+                {"name": "items", "in": "body", "desc": "勾选的条目 [{n, sc, is_dir}]，省略则全部"}]},
+    {"cmd": "transfers", "method": "GET", "path": "/api/transfers", "summary": "NAS 实时传输进度", "params": []},
+    {"cmd": "local", "method": "GET", "path": "/api/local", "summary": "NAS 本地下载记录", "params": []},
+    {"cmd": "watch", "method": "GET", "path": "/api/watch", "summary": "等待下到 NAS 的任务", "params": []},
+]
 
 
 class NotFound(Exception):
@@ -186,6 +223,8 @@ class App:
     def get(self, path, query):
         if path == "/api/status":
             return self.cloud.status()
+        if path == "/api/endpoints":
+            return {"endpoints": ENDPOINTS}
         if path == "/api/offline":
             page = int((query.get("page") or ["1"])[0])
             result = self.cloud.offline_tasks(max(1, min(page, 100)))
@@ -355,6 +394,9 @@ def main():
     cloud = client.Cloud115(port=int(os.environ.get("BROWSER_DEBUG_PORT", "9222")))
     watcher = jobs.Watcher(cloud, Path(profile) / "115-downloads.json")
     threading.Thread(target=watcher.run_forever, name="offline-watcher", daemon=True).start()
+    if os.environ.get("KEEP_115_LOGIN", "true") == "true":
+        keeper = session.SessionKeeper(cloud, Path(profile) / "115-session.json")
+        threading.Thread(target=keeper.run_forever, name="session-keeper", daemon=True).start()
     port = int(os.environ.get("DOWNLOAD_API_PORT", "1151"))
     server = ThreadingHTTPServer(("0.0.0.0", port), handler_for(App(cloud, watcher, user, encoded, profile)))
     server.daemon_threads = True

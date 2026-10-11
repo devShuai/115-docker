@@ -20,6 +20,8 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'runtime/downloader'))
 from cdp import CDP  # noqa: E402
+import client  # noqa: E402
+import session  # noqa: E402
 OUT = ROOT / '.ci-artifacts'
 PASSWORD = 'Check123'  # Synthetic CI profiles only.
 
@@ -278,6 +280,13 @@ def verify_download_api(debug_port):
     # No transfer list page is open in CI, so progress falls back to the download history.
     status, body = api_request('GET', '/api/transfers')
     assert status == 200 and json.loads(body)['live'] is False, body
+    status, body = api_request('GET', '/api/endpoints')
+    paths = {item['path'] for item in json.loads(body)['endpoints']}
+    assert status == 200 and {'/api/status', '/api/inspect', '/api/transfers'} <= paths, body
+    # The bundled command-line client speaks to the same API.
+    cli = subprocess.run(['115dl', '--url', 'http://127.0.0.1:1151', '--user', '115', '--password', PASSWORD, 'apis'],
+                         capture_output=True, text=True, timeout=20)
+    assert cli.returncode == 0 and '/api/status' in cli.stdout, cli.stderr
     # Chromium must keep its DevTools port on loopback; Compose never publishes it.
     listeners = [line.split()[1] for line in Path('/proc/net/tcp').read_text().splitlines()[1:]
                  if line.split()[3] == '0A' and int(line.split()[1].split(':')[1], 16) == debug_port]
@@ -290,59 +299,52 @@ def browser_endpoint(port):
         return json.load(response)['webSocketDebuggerUrl']
 
 
-def close_browser(port, profile_dir):
-    """Close Chromium the way a person does, so it exits cleanly and saves its cookie store."""
-    browser = CDP(browser_endpoint(port))
-    try:
-        browser.call('Browser.close', timeout=10)
-    except (OSError, RuntimeError):
-        pass  # Chromium may drop the connection before it answers.
-    finally:
-        browser.close()
-    def closed():
-        try:
-            browser_endpoint(port)
-        except OSError:
-            return not os.path.lexists(profile_dir/'SingletonLock')
-        return False
-    wait_for(closed, 'browser exit after Browser.close', seconds=30)
+def browser_cdp(port):
+    return wait_for(lambda: CDP(browser_endpoint(port)), f'browser debug endpoint on {port}')
 
 
-def session_cookie(port, action):
-    browser = wait_for(lambda: CDP(browser_endpoint(port)), 'browser debug endpoint')
+LOGIN_NAMES = ('CID', 'SEID', 'UID', 'KID')
+
+
+def set_login_cookies(port):
+    browser = browser_cdp(port)
     try:
-        if action == 'set':
-            browser.call('Storage.setCookies', {'cookies': [{'name': 'CI_LOGIN', 'value': 'kept', 'domain': '.115.com',
-                                                             'path': '/', 'secure': True, 'httpOnly': True}]})
-            return None
-        return next((cookie for cookie in browser.call('Storage.getCookies')['cookies'] if cookie['name'] == 'CI_LOGIN'), None)
+        browser.call('Storage.setCookies', {'cookies': [
+            {'name': name, 'value': 'ci-' + name, 'domain': '.115.com', 'path': '/', 'secure': True, 'httpOnly': True}
+            for name in LOGIN_NAMES]})
     finally:
         browser.close()
 
 
-def verify_login_survives_restart(port, launcher, env, profile_dir, log):
-    """115 keeps its login in session cookies; reopening the browser must not drop them."""
-    session_cookie(port, 'set')
-    close_browser(port, profile_dir)
-    # Control: a plain Chromium start deletes session cookies after a clean exit.
-    plain = subprocess.Popen(['/usr/local/115Browser/115Browser', f'--user-data-dir={profile_dir}', '--no-sandbox', '--test-type',
-                              '--no-first-run', '--no-default-browser-check', f'--remote-debugging-port={port}',
-                              '--remote-allow-origins=*', '--disable-background-networking', '--disable-sync',
-                              '--disable-component-update', '--disable-dev-shm-usage', 'about:blank'],
-                             env=env, cwd='/usr/local/115Browser', stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+def login_cookies(port):
+    browser = browser_cdp(port)
     try:
-        assert session_cookie(port, 'get') is None, 'Session cookies survived a plain restart; recheck why 115.sh restores the session'
-        session_cookie(port, 'set')
-        close_browser(port, profile_dir)
+        return {cookie['name']: cookie for cookie in browser.call('Storage.getCookies')['cookies']
+                if cookie['name'] in LOGIN_NAMES and cookie.get('domain', '').endswith('115.com')}
     finally:
-        stop_group(plain)
-    reopened = subprocess.Popen([str(launcher)], env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        browser.close()
+
+
+def verify_login_persistence(port, profile_dir):
+    """The session keeper must save 115's login cookies and put them back after a restart drops them."""
+    keeper = session.SessionKeeper(client.Cloud115(port=port), profile_dir/'115-session.json')
+    set_login_cookies(port)
+    assert keeper.save(), 'session keeper did not save a logged-in session'
+    assert (profile_dir/'115-session.json').stat().st_mode & 0o777 == 0o600
+    # A restart drops 115's session cookies; emulate that by clearing the store.
+    browser = browser_cdp(port)
     try:
-        cookie = session_cookie(port, 'get')
-        assert cookie and cookie['value'] == 'kept' and cookie['session'], f'115 login cookie lost after reopening: {cookie}'
+        browser.call('Storage.clearCookies')
     finally:
-        stop_group(reopened)
-    print('PASS: 115 session cookies survive closing and reopening the browser', flush=True)
+        browser.close()
+    assert not login_cookies(port), 'cookies were not cleared'
+    assert keeper.restore(), 'session keeper did not restore the saved login'
+    restored = login_cookies(port)
+    assert set(LOGIN_NAMES) <= restored.keys(), f'login not restored: {sorted(restored)}'
+    # Restored as persistent cookies, so they also survive a plain restart.
+    assert all(not cookie['session'] for cookie in restored.values()), 'restored cookies are still session cookies'
+    assert keeper.save() and not keeper.restore(), 'keeper restored again while already logged in'
+    print('PASS: 115 login cookies are saved and restored across a restart', flush=True)
 
 
 def run_backend(backend):
@@ -494,11 +496,7 @@ def run_backend(backend):
         assert Path('/usr/share/backgrounds/115/desktop.png').stat().st_size > 0
         assert not re.search(r'XDG_RUNTIME_DIR.*not available|Unable to set up transient service directory', (OUT/f'{backend}-desktop.log').read_text())
         if backend == 'kasm':
-            # Restarts the desktop browser, so it runs after everything that uses the fixture page.
-            fixture.close()
-            fixture = None
-            with (OUT/f'{backend}-restart.log').open('w') as restart_log:
-                verify_login_survives_restart(server_port, launcher, env, profile/'server', restart_log)
+            verify_login_persistence(server_port, profile/'server')
         return dict(backend=backend, resolutions=sizes, scaling_checks=scaling_checks, measurements=measurements, client_js_errors=received['errors'])
     except Exception:
         if client:

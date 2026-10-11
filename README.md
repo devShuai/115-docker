@@ -50,6 +50,8 @@ scripts/ci-smoke.sh                 镜像内启动桌面和浏览器验收
 scripts/ci-rfb.py                   回退后端 RFB 认证与远程分辨率验收
 scripts/ci-desktop.py               两种后端真实网页连接、自适应及性能对比
 runtime/downloader/cdp.py           工程自带的标准库 CDP/WebSocket 客户端（下载接口和测试共用）
+runtime/downloader/session.py       登录 Cookie 持久化（保持 115 登录）
+runtime/downloader/cli.py           命令行客户端 115dl
 scripts/perf-fixture.html           固定本地静态及动画测试画面
 tests/test_runtime.py              配置与启动管理验证
 nginx/115-kasm.conf.example        KasmVNC HTTPS 和原生认证转发
@@ -131,7 +133,7 @@ docker compose logs --tail=100 browser115
 
 ## 访问和登录
 
-推荐使用 Chrome、Chromium 或 Edge，在 Docker 宿主机打开 `http://127.0.0.1:1150/`，输入 `REMOTE_USER`（默认 `115`）及配置的密码后，用 115 官方客户端扫描二维码登录。浏览器配置和登录凭据保存在 `/etc/115` 数据卷中，重建后保留。115 的登录 Cookie 是会话 Cookie，浏览器启动时总是恢复上次的会话（`--restore-last-session`，同时会重新打开上次的标签页），所以关闭再打开浏览器、重启或重建容器后都不用重新扫码；在别处退出登录、或 115 服务端让登录失效时仍需重新扫码。
+推荐使用 Chrome、Chromium 或 Edge，在 Docker 宿主机打开 `http://127.0.0.1:1150/`，输入 `REMOTE_USER`（默认 `115`）及配置的密码后，用 115 官方客户端扫描二维码登录。浏览器配置和登录凭据保存在 `/etc/115` 数据卷中，重建后保留。115 的登录是会话 Cookie，浏览器正常退出或容器重建后会被清掉。为此容器会在登录后把这几个登录 Cookie 保存到 `/etc/115/115-session.json`（权限 600），下次浏览器启动若未登录就自动注入为长期 Cookie，所以关闭再打开浏览器、重启或重建容器后都不用重新扫码；在别处退出登录、或 115 服务端让登录失效时仍需重新扫码。该功能由添加下载接口的进程负责（需要 `ENABLE_DOWNLOAD_API=true`，默认开启），可用 `KEEP_115_LOGIN=false` 关闭。
 
 KasmVNC 使用浏览器原生 Basic 认证，页面和 WebSocket 均要求认证；原始 RFB TCP 端口不开放。Safari 的 Basic 认证 WebSocket 兼容性存在上游限制，优先使用 Chromium 系浏览器。[客户端说明](https://docs.kasmvnc.com/docs/clientside)
 
@@ -210,6 +212,8 @@ curl -u 115:密码 -H 'Content-Type: application/json' -d '{"text":"/电影/某�
 curl -u 115:密码 -H 'Content-Type: application/json' -d '{"kind":"drive","cid":"0"}' http://127.0.0.1:1151/api/browse
 curl -u 115:密码 -H 'Content-Type: application/json' \
   -d '{"items":[{"n":"a.mkv","pc":"...","is_dir":false}]}' http://127.0.0.1:1151/api/download
+# 列出全部接口（也可在页面底部“命令行与接口”查看）
+curl -u 用户:密码 http://127.0.0.1:1151/api/endpoints
 # 查询：云下载任务、已完成任务的内容、NAS 传输进度、登录状态
 curl -u 115:密码 http://127.0.0.1:1151/api/offline
 curl -u 115:密码 'http://127.0.0.1:1151/api/offline/content?hash=任务的 info_hash'
@@ -221,7 +225,23 @@ curl -u 115:密码 http://127.0.0.1:1151/api/status
 
 返回 409 表示 115 未登录，或 115 要求完成安全验证（错误码 911），需要在远程桌面的 115 浏览器里操作一次；返回 503 表示 115 浏览器没有运行。接口使用 Basic 认证，连续失败 10 次后锁定 10 分钟；POST 只接受同源的 JSON 请求，防止其他网站借浏览器缓存的密码提交下载。发布方式与 1150 相同：保持回环绑定，远程使用 SSH 隧道或 HTTPS 反代，反代时保留 Host 头。
 
-这些是 115 未公开的网页接口，按 115 浏览器 36.0.1 和 2026 年 10 月的 115 网页代码实现，115 更新后可能需要调整。不需要此功能时设置 `ENABLE_DOWNLOAD_API=false`，浏览器也不会开放调试端口。
+镜像内置命令行客户端 `115dl`，调用同一套接口，用户名密码与本页相同：
+
+```bash
+# 容器内（无需密码，接口仍走回环认证时用 REMOTE_USER 的密码）
+docker exec -it 115-docker 115dl apis              # 列出所有命令与接口
+docker exec -it 115-docker 115dl status
+docker exec -it 115-docker 115dl add 'magnet:?xt=urn:btih:...' --to-nas
+docker exec -it 115-docker 115dl browse --cid 0 --sort time
+docker exec -it 115-docker 115dl download --path '/电影/某文件夹'
+docker exec -it 115-docker 115dl transfers
+# 远程使用时指定地址与密码（经隧道或反代）
+DOWNLOAD_API_URL=https://你的域名 DOWNLOAD_API_PASSWORD=密码 115dl status
+```
+
+连接与凭据取自参数或环境变量：`--url`/`DOWNLOAD_API_URL`（默认 `http://127.0.0.1:1151`）、`--user`/`DOWNLOAD_API_USER`（默认 `REMOTE_USER`）、`--password`/`DOWNLOAD_API_PASSWORD`（缺省时在终端提示输入）。`115dl raw GET /api/状态路径` 可直接调用任意接口，`--json` 输出原始结果。
+
+这些是 115 未公开的网页接口，按 115 浏览器 36.0.1 和 2026 年 10 月的 115 网页代码实现，115 更新后可能需要调整。不需要此功能时设置 `ENABLE_DOWNLOAD_API=false`，浏览器也不会开放调试端口，登录保持也随之关闭。
 
 ## HTTPS 认证入口
 
