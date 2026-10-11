@@ -34,10 +34,14 @@ _PRELUDE = r"""
     body.append("time", space.time);
     return getJSON("/web/lixian/?ct=lixian&ac=" + action, {method: "POST", body});
   }
-  function listDrive(cid, offset) {
-    // 115 applies the order the person chose in the drive; the download page sorts by name itself.
-    return getJSON("https://webapi.115.com/files?aid=1&cid=" + encodeURIComponent(cid) +
-      "&offset=" + (offset || 0) + "&show_dir=1&limit=1150&format=json");
+  function listDrive(cid, offset, order) {
+    let url = "https://webapi.115.com/files?aid=1&cid=" + encodeURIComponent(cid) +
+      "&offset=" + (offset || 0) + "&show_dir=1&limit=1150&format=json";
+    // custom_order=1 applies this order to this request only; 115 keeps the order
+    // the person chose for the folder in the drive.
+    if (order) url += "&custom_order=1&o=" + encodeURIComponent(order.o) + "&asc=" + (order.asc ? 1 : 0) +
+      "&fc_mix=" + order.fc_mix + "&natsort=" + order.natsort;
+    return getJSON(url);
   }
   async function folderId(parts) {
     if (!parts.length) return "0";
@@ -70,21 +74,21 @@ LIST_OFFLINE = _page_function("""
   return lixian("task_lists", {page: String(args.page || 1)});""")
 BROWSE_DRIVE = _page_function("""
   if (!uid) return {login: false};
-  const page = await listDrive(args.cid, args.offset);
+  const page = await listDrive(args.cid, args.offset, args.order);
   return page.not_json ? {login: false} : {page, folder: await folderItem(args.cid)};""")
 OPEN_PATH = _page_function("""
   if (!uid) return {login: false};
   const name = args.parts[args.parts.length - 1];
   const parent = await folderId(args.parts.slice(0, -1));
   if (parent === null) return {missing: true};
-  const page = await listDrive(parent);
+  const page = await listDrive(parent, 0, args.order);
   if (page.not_json) return {login: false};
   const entry = (page.data || []).find(item => item.n === name);
-  if (entry && !entry.fid) return {page: await listDrive(String(entry.cid)), folder: {n: entry.n, pc: entry.pc}};
+  if (entry && !entry.fid) return {page: await listDrive(String(entry.cid), 0, args.order), folder: {n: entry.n, pc: entry.pc}};
   if (entry) return {page, folder: await folderItem(parent), focus: name};
   // Folders with more than one page of entries: ask for the folder id directly.
   const direct = await folderId(args.parts);
-  return direct === null ? {missing: true} : {page: await listDrive(direct), folder: await folderItem(direct)};""")
+  return direct === null ? {missing: true} : {page: await listDrive(direct, 0, args.order), folder: await folderItem(direct)};""")
 FOLDER_RESULT = _page_function("""
   if (!uid) return {login: false};
   const info = await getJSON("https://webapi.115.com/category/get?cid=" + encodeURIComponent(args.cid));
@@ -136,6 +140,13 @@ class NotLoggedIn(RuntimeError):
 
 class VerificationRequired(RuntimeError):
     """115 asked for a captcha (errcode 911)."""
+
+
+def _whole(value):
+    try:
+        return int(float(value or 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _message(result, fallback):
@@ -254,26 +265,26 @@ class Cloud115:
         return None
 
     @staticmethod
-    def _listing(result):
+    def _listing(result, order=None):
         page = result.get("page") or {}
         if not page.get("state"):
             raise RuntimeError(_message(page, "读取网盘目录失败"))
-        listing = links.drive_listing(page)
+        listing = links.drive_listing(page, order)
         folder = result.get("folder")
         listing["folder"] = {"n": folder["n"], "pc": folder["pc"], "is_dir": True} if folder else None
         if result.get("focus"):
             listing["focus"] = result["focus"]
         return listing
 
-    def browse_drive(self, cid, offset=0):
-        return self._listing(self._call(BROWSE_DRIVE, {"cid": str(cid or "0"), "offset": offset}))
+    def browse_drive(self, cid, offset=0, order=None):
+        return self._listing(self._call(BROWSE_DRIVE, {"cid": str(cid or "0"), "offset": offset, "order": order}), order)
 
-    def open_path(self, parts):
+    def open_path(self, parts, order=None):
         """A drive path -> the listing of that folder, or of a file's folder with the file in focus."""
-        result = self._call(OPEN_PATH, {"parts": parts})
+        result = self._call(OPEN_PATH, {"parts": parts, "order": order})
         if result.get("missing"):
             raise ValueError("网盘里找不到：/" + "/".join(parts))
-        return self._listing(result)
+        return self._listing(result, order)
 
     def resolve(self, parts):
         listing = self.open_path(parts)
@@ -301,19 +312,20 @@ class Cloud115:
         result = self._call(FOLDER_RESULT, {"cid": cid, "name": name})
         return links.drive_item(result["item"]) if "item" in result else None
 
-    def offline_content(self, task):
+    def offline_content(self, task, order=None):
         """What a finished offline task produced, as a listing to pick from for the NAS."""
         item = self.offline_result(task)
         if item is None:
             raise ValueError("云下载还没有完成，或文件还在转存到网盘")
         if item["is_dir"] and task.get("file_id"):
-            listing = self.browse_drive(str(task["file_id"]))
+            listing = self.browse_drive(str(task["file_id"]), order=order)
             listing["folder"] = item
         else:
             listing = {"kind": "drive", "cid": str(task.get("file_id") or ""), "path": [], "folder": None,
                        "count": 1, "offset": 0, "truncated": False,
                        "items": [{"id": item["pc"], "name": item["n"], "pc": item["pc"], "is_dir": False,
-                                  "size": int(task.get("size") or 0), "cid": ""}]}
+                                  "size": _whole(task.get("size")), "time": _whole(task.get("last_update")),
+                                  "cid": ""}]}
         listing["result"] = item
         return listing
 

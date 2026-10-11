@@ -14,6 +14,10 @@ if [[ "${ENABLE_DOWNLOAD_API:-true}" == "true" ]]; then
   extra_args+=("--remote-debugging-port=${BROWSER_DEBUG_PORT:-9222}")
 fi
 
+# 115 keeps its login (CID, SEID, UID, KID) in session cookies. Chromium writes
+# them to the profile but deletes them at startup unless the last session is
+# restored, so without this flag closing the browser or restarting the container
+# logs 115 out. It also reopens the previous tabs.
 # Do not ignore TLS certificate errors or disable Chromium site isolation.
 exec /usr/local/115Browser/115Browser \
   "--user-data-dir=${PROFILE_DIR_IN_CONTAINER:-/etc/115}" \
@@ -22,5 +26,6 @@ exec /usr/local/115Browser/115Browser \
   --no-first-run \
   --no-default-browser-check \
   --start-maximized \
+  --restore-last-session \
   --lang=zh-CN \
   "${extra_args[@]}" "$@"

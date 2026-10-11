@@ -49,6 +49,14 @@
       <div class="picker-head">
         <nav id="crumbs" class="crumbs" aria-label="位置"></nav>
         <input id="filter" class="filter" type="search" placeholder="筛选文件名" aria-label="筛选文件名">
+        <select id="sort" class="sort-select" aria-label="排序">
+          <option value="time:0">完成时间 新→旧</option>
+          <option value="time:1">完成时间 旧→新</option>
+          <option value="name:1">名称 A→Z</option>
+          <option value="name:0">名称 Z→A</option>
+          <option value="size:0">大小 大→小</option>
+          <option value="size:1">大小 小→大</option>
+        </select>
         <button id="close" class="btn icon-btn" type="button" aria-label="关闭">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
@@ -57,7 +65,12 @@
       <div class="files-wrap">
         <table class="files">
           <thead>
-            <tr><th class="c"><input id="all" type="checkbox" aria-label="全选"></th><th>名称</th><th class="size">大小</th></tr>
+            <tr>
+              <th class="c"><input id="all" type="checkbox" aria-label="全选"></th>
+              <th><button class="sort" type="button" data-sort="name">名称<i></i></button></th>
+              <th class="size"><button class="sort" type="button" data-sort="size">大小<i></i></button></th>
+              <th class="time"><button class="sort" type="button" data-sort="time">完成时间<i></i></button></th>
+            </tr>
           </thead>
           <tbody id="rows"></tbody>
         </table>

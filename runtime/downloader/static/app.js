@@ -277,11 +277,94 @@ async function addLinks(text) {
 
 /* ---------- Picker ---------- */
 
+// context: "browse" for drive browsing, "content" for a cloud download result or a share.
 const picker = {listing: null, items: [], rows: [], selected: new Set(), last: -1, loaded: 0, share: null, stack: [],
-                busy: false};
+                busy: false, context: "browse"};
 
-function natural(a, b) {
-  return (b.is_dir - a.is_dir) || a.name.localeCompare(b.name, "zh-CN", {numeric: true});
+// Browsing sorts newest first by completion time (when the file entered the drive);
+// a download's own files and shares read best by name, e.g. episodes in order.
+const FIRST_ASC = {time: false, name: true, size: false};
+const SORT_DEFAULTS = {browse: {key: "time", asc: false}, content: {key: "name", asc: true}};
+const collator = new Intl.Collator("zh-CN", {numeric: true, sensitivity: "base"});
+
+function loadSorts() {
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem("115-sort") || "{}") || {};
+  } catch (error) {
+    // Unreadable storage falls back to the defaults.
+  }
+  const sorts = {};
+  for (const [context, fallback] of Object.entries(SORT_DEFAULTS)) {
+    const value = saved[context];
+    sorts[context] = value && value.key in FIRST_ASC && typeof value.asc === "boolean"
+      ? {key: value.key, asc: value.asc} : {...fallback};
+  }
+  return sorts;
+}
+const sorts = loadSorts();
+
+function sortNow() {
+  return sorts[picker.context];
+}
+
+function order(context) {
+  const sort = sorts[context || picker.context];
+  return {sort: sort.key, asc: sort.asc};
+}
+
+// Name and size keep folders first; completion time mixes them, as 115 does when asked.
+function compare(a, b) {
+  const {key, asc} = sortNow(), direction = asc ? 1 : -1;
+  let result = key === "time" ? 0 : b.is_dir - a.is_dir;
+  if (!result && key === "name") result = collator.compare(a.name, b.name) * direction;
+  if (!result && key === "size") result = ((a.size || 0) - (b.size || 0)) * direction;
+  if (!result && key === "time") result = ((a.time || 0) - (b.time || 0)) * direction;
+  return result || collator.compare(a.name, b.name);
+}
+
+// Unix seconds -> "今天 12:57", "昨天 08:03", "10-09 21:40" or "2025-12-30".
+function stamp(seconds) {
+  if (!seconds) return "";
+  const date = new Date(seconds * 1000), now = new Date(), pad = (number) => String(number).padStart(2, "0");
+  const day = (value) => value.getFullYear() + "-" + pad(value.getMonth() + 1) + "-" + pad(value.getDate());
+  const clock = pad(date.getHours()) + ":" + pad(date.getMinutes());
+  if (day(date) === day(now)) return "今天 " + clock;
+  if (day(date) === day(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))) return "昨天 " + clock;
+  return date.getFullYear() === now.getFullYear() ? day(date).slice(5) + " " + clock : day(date);
+}
+
+function renderSortControls() {
+  const {key, asc} = sortNow();
+  for (const button of document.querySelectorAll(".sort")) {
+    const active = button.dataset.sort === key;
+    button.classList.toggle("on", active);
+    button.lastChild.textContent = active ? (asc ? "↑" : "↓") : "";
+    button.parentElement.setAttribute("aria-sort", active ? (asc ? "ascending" : "descending") : "none");
+  }
+  $("sort").value = key + ":" + (asc ? 1 : 0);
+}
+
+function setSort(key, asc) {
+  sorts[picker.context] = {key, asc};
+  try {
+    localStorage.setItem("115-sort", JSON.stringify(sorts));
+  } catch (error) {
+    // Not remembered; the current view still changes.
+  }
+  const listing = picker.listing;
+  if (!listing) return;
+  if (listing.kind === "drive" && listing.truncated) {
+    // Only part of the folder is loaded: ask 115 for the first page in the new order.
+    load(api("api/browse", {kind: "drive", cid: listing.cid, ...order()}), {keep: true});
+    return;
+  }
+  picker.items.sort(compare);
+  picker.last = -1;
+  renderRows();
+  applyFilter();
+  renderSortControls();
+  renderSelection();
 }
 
 function setBusy(busy) {
@@ -312,22 +395,28 @@ async function load(request, options = {}) {
   }
 }
 
-function show(listing, {all = false} = {}) {
+// keep: the same folder in a new order, so the selection and the filter stay.
+function show(listing, {all = false, context = null, keep = false} = {}) {
   if (listing.kind !== "share") {
     picker.share = null;
     picker.stack = [];
   }
+  if (context) picker.context = context;
+  const kept = keep ? picker.selected : new Set();
+  if (keep && picker.listing && picker.listing.result) listing.result = picker.listing.result;
   picker.listing = listing;
-  picker.items = listing.items.slice().sort(natural);
-  picker.selected = new Set(all ? picker.items.map((item) => item.id) : []);
+  picker.items = listing.items.slice().sort(compare);
+  picker.selected = new Set(picker.items.filter((item) => all || kept.has(item.id)).map((item) => item.id));
   const focus = listing.focus && picker.items.find((item) => item.name === listing.focus && !item.is_dir);
   if (focus) picker.selected.add(focus.id);
   picker.last = -1;
   picker.loaded = listing.offset + listing.items.length;
-  $("filter").value = "";
+  if (!keep) $("filter").value = "";
   $("picker").hidden = false;
   renderCrumbs();
+  renderSortControls();
   renderRows(focus);
+  applyFilter();
   renderMore();
   renderSelection();
 }
@@ -344,13 +433,13 @@ async function loadMore() {
   const listing = picker.listing;
   const body = listing.kind === "share"
     ? {kind: "share", url: picker.share.url, receive_code: picker.share.receive_code, cid: listing.cid, offset: picker.loaded}
-    : {kind: "drive", cid: listing.cid, offset: picker.loaded};
+    : {kind: "drive", cid: listing.cid, offset: picker.loaded, ...order()};
   setBusy(true);
   try {
     const next = await api("api/browse", body);
     if (picker.listing !== listing) return;
     const known = new Set(picker.items.map((item) => item.id));
-    picker.items = picker.items.concat(next.items.filter((item) => !known.has(item.id))).sort(natural);
+    picker.items = picker.items.concat(next.items.filter((item) => !known.has(item.id))).sort(compare);
     picker.loaded = next.offset + next.items.length;
     listing.truncated = next.truncated && next.items.length > 0;
     listing.count = next.count;
@@ -391,9 +480,12 @@ function renderRows(focus) {
     const name = item.is_dir
       ? h("button", {class: "open", type: "button", text: item.name, onclick: (event) => { event.stopPropagation(); openFolder(item); }})
       : h("span", {text: item.name});
+    const bytes = item.is_dir ? "" : size(item.size), time = stamp(item.time);
+    // Phones hide the size and time columns and show them under the name instead.
+    const sub = h("span", {class: "sub", text: [bytes, time].filter(Boolean).join(" · ")});
     const row = h("tr", {class: (box.checked ? "on" : "") + (item === focus ? " focus" : "")},
-      h("td", {class: "c"}, box), h("td", null, h("div", {class: "cell"}, slot, name)),
-      h("td", {class: "size", text: item.is_dir ? "" : size(item.size)}));
+      h("td", {class: "c"}, box), h("td", null, h("div", {class: "cell"}, slot, h("div", {class: "label"}, name, sub))),
+      h("td", {class: "size", text: bytes}), h("td", {class: "time", text: time}));
     row.addEventListener("click", (event) => {
       if (event.target.closest(".open")) return;
       choose(index, event.shiftKey, event.target === box ? box.checked : !picker.selected.has(item.id));
@@ -488,8 +580,8 @@ function fetchWhole() {
   if (folder) fetchItems([folder], "文件夹「" + folder.n + "」");
 }
 
-function browseDrive(cid) {
-  return load(api("api/browse", {kind: "drive", cid: String(cid)}));
+function browseDrive(cid, context = picker.context) {
+  return load(api("api/browse", {kind: "drive", cid: String(cid), ...order(context)}), {context});
 }
 
 function loadShare(options) {
@@ -511,7 +603,9 @@ function openShareLevel(index) {
 
 async function openOffline(hash, quiet) {
   waiting.delete(hash);
-  const opened = await load(api("api/offline/content?hash=" + encodeURIComponent(hash)), {all: true, quiet});
+  const {sort, asc} = order("content");
+  const query = "?hash=" + encodeURIComponent(hash) + "&sort=" + sort + "&asc=" + (asc ? 1 : 0);
+  const opened = await load(api("api/offline/content" + query), {all: true, quiet, context: "content"});
   updateWaiting();
   if (opened) $("picker").scrollIntoView({block: "nearest", behavior: "smooth"});
 }
@@ -570,14 +664,15 @@ async function submit() {
       return;
     }
     const code = $("code").hidden ? "" : $("code").value.trim();
-    const request = api("api/inspect", {text, receive_code: code}).then((listing) => {
+    const context = kind.kind === "share" ? "content" : "browse";
+    const request = api("api/inspect", {text, receive_code: code, ...order(context)}).then((listing) => {
       if (listing.kind === "share") {
         picker.share = listing.share;
         picker.stack = [{cid: "", name: listing.title || "分享的文件", item: null}];
       }
       return listing;
     });
-    if (await load(request, {all: kind.kind === "share"})) $("message").hidden = true;
+    if (await load(request, {all: kind.kind === "share", context})) $("message").hidden = true;
     else if (kind.kind === "share" && !code) $("code").hidden = false;
   } catch (error) {
     say(error.message, false);
@@ -654,7 +749,17 @@ $("code").addEventListener("keydown", (event) => {
 });
 $("browse").addEventListener("click", () => {
   picker.share = null;
-  browseDrive("0");
+  browseDrive("0", "browse");
+});
+for (const button of document.querySelectorAll(".sort")) {
+  button.addEventListener("click", () => {
+    const key = button.dataset.sort, now = sortNow();
+    setSort(key, key === now.key ? !now.asc : FIRST_ASC[key]);
+  });
+}
+$("sort").addEventListener("change", () => {
+  const [key, asc] = $("sort").value.split(":");
+  setSort(key, asc === "1");
 });
 $("close").addEventListener("click", closePicker);
 $("fetch").addEventListener("click", fetchSelected);

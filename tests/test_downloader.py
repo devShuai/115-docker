@@ -66,19 +66,23 @@ class LinkTests(unittest.TestCase):
     def test_listings_from_115_pages(self):
         page = {"state": True, "cid": "7", "count": 3,
                 "path": [{"name": "根目录", "cid": 0}, {"name": "电影", "cid": "7"}],
-                "data": [{"n": "合集", "cid": "8", "pid": "7", "pc": "pcd"},
-                         {"n": "a.mkv", "cid": "7", "fid": "9", "pc": "pcf", "s": "1024"}]}
-        listing = links.drive_listing(page)
+                "data": [{"n": "合集", "cid": "8", "pid": "7", "pc": "pcd", "tp": "1700000000"},
+                         {"n": "a.mkv", "cid": "7", "fid": "9", "pc": "pcf", "s": "1024", "tp": "1700000100"}]}
+        listing = links.drive_listing(page, links.drive_order("name", True))
         self.assertEqual(listing["path"], [{"cid": "0", "name": "网盘"}, {"cid": "7", "name": "电影"}])
         self.assertEqual(listing["items"], [
-            {"id": "8", "name": "合集", "pc": "pcd", "is_dir": True, "size": 0, "cid": "8"},
-            {"id": "9", "name": "a.mkv", "pc": "pcf", "is_dir": False, "size": 1024, "cid": ""}])
+            {"id": "8", "name": "合集", "pc": "pcd", "is_dir": True, "size": 0, "time": 1700000000, "cid": "8"},
+            {"id": "9", "name": "a.mkv", "pc": "pcf", "is_dir": False, "size": 1024, "time": 1700000100, "cid": ""}])
         self.assertEqual((listing["cid"], listing["count"], listing["truncated"]), ("7", 3, True))
+        self.assertEqual((listing["sort"], listing["asc"]), ("name", True))
         snap = {"state": True, "data": {"count": 2, "shareinfo": {"share_title": "分享"},
-                                        "list": [{"n": "d", "cid": "5", "p": 0}, {"n": "a.mkv", "fid": "6", "p": 1, "s": 9}]}}
+                                        "list": [{"n": "d", "cid": "5", "p": 0, "t": "2023-11-15 06:13"},
+                                                 {"n": "a.mkv", "fid": "6", "p": 1, "s": 9, "t": "1700000000"}]}}
         listing = links.share_listing(snap, "4")
-        self.assertEqual(listing["items"], [{"id": "5", "name": "d", "sc": "5", "is_dir": True, "size": 0, "cid": "5"},
-                                            {"id": "6", "name": "a.mkv", "sc": "6", "is_dir": False, "size": 9, "cid": ""}])
+        self.assertEqual(listing["items"], [{"id": "5", "name": "d", "sc": "5", "is_dir": True, "size": 0,
+                                             "time": 1699999980, "cid": "5"},
+                                            {"id": "6", "name": "a.mkv", "sc": "6", "is_dir": False, "size": 9,
+                                             "time": 1700000000, "cid": ""}])
         self.assertEqual((listing["kind"], listing["cid"], listing["title"], listing["truncated"]), ("share", "4", "分享", False))
 
     def test_picked_items_are_checked_before_reaching_the_browser(self):
@@ -95,6 +99,14 @@ class LinkTests(unittest.TestCase):
                 links.picked_items(raw)
         with self.assertRaises(ValueError):
             links.picked_items([{"n": "a", "sc": "x1", "is_dir": False}], share=True)
+
+    def test_sort_choices_map_to_115_list_parameters(self):
+        self.assertEqual(links.drive_order(), {"sort": "time", "asc": False, "o": "user_ptime", "fc_mix": 1, "natsort": 0})
+        self.assertEqual(links.drive_order("name"), {"sort": "name", "asc": True, "o": "file_name", "fc_mix": 0, "natsort": 1})
+        self.assertEqual(links.drive_order("size", True)["o"], "file_size")
+        for sort, asc in (("user_ptime", None), ("time", "1"), ("name", 1)):
+            with self.assertRaises(ValueError):
+                links.drive_order(sort, asc)
 
     def test_detect_and_ids(self):
         self.assertEqual(links.detect("链接：https://115.com/s/swabc 访问码：q9w8"), "share")
@@ -222,7 +234,7 @@ class ClientTests(unittest.TestCase):
         cloud = browser.cloud()
         item = cloud.resolve(["电影", "合集"])
         self.assertEqual(item, {"n": "合集", "pc": "pcx", "is_dir": True})
-        self.assertEqual(browser.log[0][1:], (client.OPEN_PATH, {"parts": ["电影", "合集"]}))
+        self.assertEqual(browser.log[0][1:], (client.OPEN_PATH, {"parts": ["电影", "合集"], "order": None}))
         cloud.download([item])
         self.assertEqual(browser.log[1][2], {"items": [item]})
         self.assertEqual(cloud.resolve(["合集", "a.mkv"]), {"n": "a.mkv", "pc": "pca", "is_dir": False})
@@ -230,7 +242,7 @@ class ClientTests(unittest.TestCase):
             cloud.resolve(["没有"])
         with self.assertRaisesRegex(RuntimeError, "目录不存在"):
             cloud.browse_drive("77")
-        self.assertEqual(browser.log[-1][1:], (client.BROWSE_DRIVE, {"cid": "77", "offset": 0}))
+        self.assertEqual(browser.log[-1][1:], (client.BROWSE_DRIVE, {"cid": "77", "offset": 0, "order": None}))
         self.assertEqual(cloud.share("swabc", "x1y2", "https://115cdn.com/s/swabc?password=x1y2"), ["a.mkv", "d"])
         self.assertEqual(browser.log[-1][1], client.SHARE_DOWNLOAD)
         self.assertEqual(browser.log[-1][2], {"items": [{"n": "a.mkv", "pc": "", "is_dir": False, "sc": "8"},
@@ -270,14 +282,24 @@ class ClientTests(unittest.TestCase):
         browser = FakeBrowser(pages=[DRIVE_TAB], results=[{"page": page, "folder": {"n": "合集", "pc": "pcd"}}])
         task = {"status": 2, "move": 1, "name": "合集", "pick_code": "pcd", "file_category": 0, "file_id": "50", "size": 7}
         listing = browser.cloud().offline_content(task)
-        self.assertEqual(browser.log[0][1:], (client.BROWSE_DRIVE, {"cid": "50", "offset": 0}))
+        self.assertEqual(browser.log[0][1:], (client.BROWSE_DRIVE, {"cid": "50", "offset": 0, "order": None}))
         self.assertEqual((listing["folder"], listing["result"]), ({"n": "合集", "pc": "pcd", "is_dir": True},) * 2)
         self.assertEqual([item["name"] for item in listing["items"]], ["e1.mkv"])
         single = FakeBrowser(pages=[DRIVE_TAB]).cloud().offline_content(dict(task, file_category=1, name="a.iso"))
-        self.assertEqual(single["items"], [{"id": "pcd", "name": "a.iso", "pc": "pcd", "is_dir": False, "size": 7, "cid": ""}])
+        self.assertEqual(single["items"], [{"id": "pcd", "name": "a.iso", "pc": "pcd", "is_dir": False, "size": 7, "time": 0,
+                                            "cid": ""}])
         self.assertIsNone(single["folder"])
         with self.assertRaisesRegex(ValueError, "还没有完成"):
             FakeBrowser(pages=[DRIVE_TAB]).cloud().offline_content(dict(task, status=1))
+
+    def test_sorted_listing_reaches_the_page_and_the_result(self):
+        page = {"state": True, "cid": "5", "count": 0, "path": [], "data": []}
+        browser = FakeBrowser(pages=[DRIVE_TAB], results=[{"page": page, "folder": None}])
+        order = links.drive_order("size", False)
+        listing = browser.cloud().browse_drive("5", 0, order)
+        self.assertEqual(browser.log[0][2]["order"], order)
+        self.assertEqual((listing["sort"], listing["asc"]), ("size", False))
+        self.assertIn("custom_order=1", client.BROWSE_DRIVE, "without it 115 ignores the order")
 
     def test_find_offline_reads_a_few_pages(self):
         pages = [{"state": True, "page_count": 3, "tasks": [{"info_hash": "h1"}]},
@@ -424,12 +446,12 @@ class ServerCloud:
         self.calls.append(("share", share_code, receive_code, page, items))
         return [item["n"] for item in items] if items else ["a", "b"]
 
-    def open_path(self, parts):
-        self.calls.append(("open", parts))
+    def open_path(self, parts, order=None):
+        self.calls.append(("open", parts, order))
         return {"kind": "drive", "cid": "5", "items": [], "focus": parts[-1]}
 
-    def browse_drive(self, cid, offset=0):
-        self.calls.append(("drive", cid, offset))
+    def browse_drive(self, cid, offset=0, order=None):
+        self.calls.append(("drive", cid, offset, order["sort"], order["asc"]))
         return {"kind": "drive", "cid": cid, "items": []}
 
     def browse_share(self, share_code, receive_code, cid="", offset=0):
@@ -439,7 +461,8 @@ class ServerCloud:
     def find_offline(self, info_hash):
         return {"info_hash": "h1", "name": "电影", "status": 2, "pick_code": "pc1", "file_category": 0} if info_hash == "h1" * 4 else None
 
-    def offline_content(self, task):
+    def offline_content(self, task, order=None):
+        self.calls.append(("content", order["sort"], order["asc"]))
         return {"kind": "drive", "cid": "50", "items": [], "result": {"n": task["name"], "pc": "pc1", "is_dir": True}}
 
     def transfers(self):
@@ -542,11 +565,14 @@ class ServerTests(unittest.TestCase):
         status, data = self.post("/api/browse", {"kind": "drive", "cid": "7"})
         self.assertEqual((status, data["cid"]), (200, "7"))
         self.assertEqual(self.post("/api/browse", {"kind": "drive"})[0], 200)
-        self.assertEqual(self.cloud.calls[-1], ("drive", "0", 0))
-        self.assertEqual(self.post("/api/browse", {"kind": "drive", "cid": "7", "offset": 1150})[0], 200)
-        self.assertEqual(self.cloud.calls[-1], ("drive", "7", 1150))
+        self.assertEqual(self.cloud.calls[-1], ("drive", "0", 0, "time", False))
+        self.assertEqual(self.post("/api/browse", {"kind": "drive", "cid": "7", "offset": 1150, "sort": "name", "asc": False})[0], 200)
+        self.assertEqual(self.cloud.calls[-1], ("drive", "7", 1150, "name", False))
+        self.assertEqual(self.post("/api/inspect", {"text": "/电影", "sort": "size"})[0], 200)
+        self.assertEqual(self.cloud.calls[-1][2]["o"], "file_size")
         for body in ({"kind": "drive", "cid": "1 or 1"}, {"kind": "share", "url": "https://115.com/s/swabc", "cid": "x"},
-                     {"kind": "drive", "offset": -1}, {"kind": "drive", "offset": "1e9"}, {"kind": "drive", "offset": True}):
+                     {"kind": "drive", "offset": -1}, {"kind": "drive", "offset": "1e9"}, {"kind": "drive", "offset": True},
+                     {"kind": "drive", "sort": "user_ptime"}, {"kind": "drive", "asc": "yes"}):
             self.assertEqual(self.post("/api/browse", body)[0], 400, body)
         self.assertEqual(self.post("/api/inspect", {"text": " "})[0], 400)
 
@@ -556,9 +582,11 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(task, {"hash": "h1", "name": "电影", "status": "下载中", "state": "downloading", "text": "下载中",
                                 "percent": 50.5, "size": 9, "speed": 0, "left": 0, "added": None, "folder": False,
                                 "ready": False, "auto": jobs.WAITING})
-        status, _, data = self.request("GET", "/api/offline/content?hash=" + "h1" * 4)
+        status, _, data = self.request("GET", "/api/offline/content?hash=" + "h1" * 4 + "&sort=name&asc=1")
         listing = json.loads(data)
         self.assertEqual((status, listing["result"]["pc"], listing["task"]["ready"]), (200, "pc1", True))
+        self.assertEqual(self.cloud.calls[-1], ("content", "name", True))
+        self.assertEqual(self.request("GET", "/api/offline/content?hash=" + "h1" * 4 + "&asc=up")[0], 400)
         self.assertEqual(self.request("GET", "/api/offline/content?hash=" + "h2" * 4)[0], 400)
         self.assertEqual(self.request("GET", "/api/offline/content?hash=../x")[0], 400)
         self.assertEqual(json.loads(self.request("GET", "/api/local")[2]), {"downloads": []})

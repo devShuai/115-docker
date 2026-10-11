@@ -139,6 +139,10 @@ class ConfigurationTests(unittest.TestCase):
         self.execute()
         self.assertFalse(path.parent.exists())
 
+    def test_browser_restores_the_session_so_115_stays_logged_in(self):
+        # 115's login cookies are session cookies; CI checks the restart itself (ci-desktop.py).
+        self.assertIn("--restore-last-session", (ROOT / "runtime/115.sh").read_text())
+
     def test_cookie_extension_requires_values(self):
         with self.assertRaisesRegex(ValueError, "no COOKIE values"):
             self.execute(ENABLE_COOKIE_EXTENSION="true")

@@ -3,10 +3,12 @@
 The item formats mirror 115's own web code: the drive dialog
 (wl_disk2014/core/DG/DownFile.js) and the share page (115cdn.com/s/...).
 """
+from datetime import datetime, timedelta, timezone
 import re
 from urllib.parse import parse_qs, urlsplit
 
 MAX_LINKS = 100
+CHINA = timezone(timedelta(hours=8))
 _OFFLINE = re.compile(r"(?:(?:https?|ftp)://[^\s/]+\S*|magnet:\?\S*xt=urn:btih:[0-9A-Za-z]{32,40}\S*|ed2k://\|file\|\S+)",
                       re.IGNORECASE)
 _SHARE_URL = re.compile(r"https?://(?:[\w-]+\.)?(?:115|115cdn|anxia)\.com/s/([A-Za-z0-9]{4,32})(\?[^\s#]*)?",
@@ -81,7 +83,37 @@ def _size(value):
         return 0
 
 
-def drive_listing(page):
+def _epoch(value):
+    """115 times are Unix seconds, or 'YYYY-MM-DD HH:MM' in China time on some share pages."""
+    text = str(value or "").strip()
+    if text.isdigit():
+        return int(text)
+    match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?", text)
+    if not match:
+        return 0
+    parts = [int(part or 0) for part in match.groups()]
+    return int(datetime(*parts, tzinfo=CHINA).timestamp())
+
+
+# Sort choices the page offers -> 115 list parameters. Name and size keep folders
+# first; completion time (when the file entered the drive) mixes them so the
+# newest items come first.
+SORTS = {"time": ("user_ptime", 1), "name": ("file_name", 0), "size": ("file_size", 0)}
+DEFAULT_ASC = {"time": False, "name": True, "size": False}
+
+
+def drive_order(sort=None, asc=None):
+    sort = sort or "time"
+    if sort not in SORTS:
+        raise ValueError("排序方式无效")
+    asc = DEFAULT_ASC[sort] if asc is None else asc
+    if not isinstance(asc, bool):
+        raise ValueError("排序方向无效")
+    field, mixed = SORTS[sort]
+    return {"sort": sort, "asc": asc, "o": field, "fc_mix": mixed, "natsort": int(sort == "name")}
+
+
+def drive_listing(page, order=None):
     """A webapi.115.com/files page -> the listing the download page shows."""
     entries = page.get("data") or []
     path = [{"cid": str(item.get("cid")), "name": item.get("name") or ""} for item in page.get("path") or []]
@@ -92,12 +124,15 @@ def drive_listing(page):
         item = drive_item(entry)
         items.append({"id": str(entry.get("fid") or entry.get("cid")), "name": item["n"], "pc": item["pc"],
                       "is_dir": item["is_dir"], "size": 0 if item["is_dir"] else _size(entry.get("s")),
-                      "cid": str(entry.get("cid")) if item["is_dir"] else ""})
+                      "time": _size(entry.get("tp")), "cid": str(entry.get("cid")) if item["is_dir"] else ""})
     offset = _size(page.get("offset"))
     count = _size(page.get("count")) or offset + len(items)
     # truncated: more entries follow; the page asks for them with the next offset.
-    return {"kind": "drive", "cid": str(page.get("cid", path[-1]["cid"] if path else "0")), "path": path,
-            "count": count, "offset": offset, "truncated": count > offset + len(items), "items": items}
+    listing = {"kind": "drive", "cid": str(page.get("cid", path[-1]["cid"] if path else "0")), "path": path,
+               "count": count, "offset": offset, "truncated": count > offset + len(items), "items": items}
+    if order:
+        listing.update(sort=order["sort"], asc=order["asc"])
+    return listing
 
 
 def share_listing(snap, cid="", offset=0):
@@ -107,7 +142,8 @@ def share_listing(snap, cid="", offset=0):
     for entry in data.get("list") or []:
         item = share_item(entry)
         items.append({"id": item["sc"], "name": item["n"], "sc": item["sc"], "is_dir": item["is_dir"],
-                      "size": 0 if item["is_dir"] else _size(entry.get("s")), "cid": item["sc"] if item["is_dir"] else ""})
+                      "size": 0 if item["is_dir"] else _size(entry.get("s")), "time": _epoch(entry.get("t")),
+                      "cid": item["sc"] if item["is_dir"] else ""})
     count = _size(data.get("count")) or offset + len(items)
     info = data.get("shareinfo") or {}
     return {"kind": "share", "cid": str(cid or ""), "title": str(info.get("share_title") or ""),

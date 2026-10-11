@@ -285,6 +285,66 @@ def verify_download_api(debug_port):
     print('PASS: download API auth, same-origin JSON checks, browser status and loopback-only DevTools', flush=True)
 
 
+def browser_endpoint(port):
+    with urllib.request.urlopen(f'http://127.0.0.1:{port}/json/version', timeout=2) as response:
+        return json.load(response)['webSocketDebuggerUrl']
+
+
+def close_browser(port, profile_dir):
+    """Close Chromium the way a person does, so it exits cleanly and saves its cookie store."""
+    browser = CDP(browser_endpoint(port))
+    try:
+        browser.call('Browser.close', timeout=10)
+    except (OSError, RuntimeError):
+        pass  # Chromium may drop the connection before it answers.
+    finally:
+        browser.close()
+    def closed():
+        try:
+            browser_endpoint(port)
+        except OSError:
+            return not os.path.lexists(profile_dir/'SingletonLock')
+        return False
+    wait_for(closed, 'browser exit after Browser.close', seconds=30)
+
+
+def session_cookie(port, action):
+    browser = wait_for(lambda: CDP(browser_endpoint(port)), 'browser debug endpoint')
+    try:
+        if action == 'set':
+            browser.call('Storage.setCookies', {'cookies': [{'name': 'CI_LOGIN', 'value': 'kept', 'domain': '.115.com',
+                                                             'path': '/', 'secure': True, 'httpOnly': True}]})
+            return None
+        return next((cookie for cookie in browser.call('Storage.getCookies')['cookies'] if cookie['name'] == 'CI_LOGIN'), None)
+    finally:
+        browser.close()
+
+
+def verify_login_survives_restart(port, launcher, env, profile_dir, log):
+    """115 keeps its login in session cookies; reopening the browser must not drop them."""
+    session_cookie(port, 'set')
+    close_browser(port, profile_dir)
+    # Control: a plain Chromium start deletes session cookies after a clean exit.
+    plain = subprocess.Popen(['/usr/local/115Browser/115Browser', f'--user-data-dir={profile_dir}', '--no-sandbox', '--test-type',
+                              '--no-first-run', '--no-default-browser-check', f'--remote-debugging-port={port}',
+                              '--remote-allow-origins=*', '--disable-background-networking', '--disable-sync',
+                              '--disable-component-update', '--disable-dev-shm-usage', 'about:blank'],
+                             env=env, cwd='/usr/local/115Browser', stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    try:
+        assert session_cookie(port, 'get') is None, 'Session cookies survived a plain restart; recheck why 115.sh restores the session'
+        session_cookie(port, 'set')
+        close_browser(port, profile_dir)
+    finally:
+        stop_group(plain)
+    reopened = subprocess.Popen([str(launcher)], env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    try:
+        cookie = session_cookie(port, 'get')
+        assert cookie and cookie['value'] == 'kept' and cookie['session'], f'115 login cookie lost after reopening: {cookie}'
+    finally:
+        stop_group(reopened)
+    print('PASS: 115 session cookies survive closing and reopening the browser', flush=True)
+
+
 def run_backend(backend):
     client_port = 9223 if backend == 'legacy' else 9225
     server_port = client_port+1
@@ -433,6 +493,12 @@ def run_backend(backend):
         assert Path('/run/115').stat().st_mode & 0o777 == 0o700
         assert Path('/usr/share/backgrounds/115/desktop.png').stat().st_size > 0
         assert not re.search(r'XDG_RUNTIME_DIR.*not available|Unable to set up transient service directory', (OUT/f'{backend}-desktop.log').read_text())
+        if backend == 'kasm':
+            # Restarts the desktop browser, so it runs after everything that uses the fixture page.
+            fixture.close()
+            fixture = None
+            with (OUT/f'{backend}-restart.log').open('w') as restart_log:
+                verify_login_survives_restart(server_port, launcher, env, profile/'server', restart_log)
         return dict(backend=backend, resolutions=sizes, scaling_checks=scaling_checks, measurements=measurements, client_js_errors=received['errors'])
     except Exception:
         if client:

@@ -140,6 +140,13 @@ def _text(value):
     return "\n".join(str(item) for item in value) if isinstance(value, list) else ""
 
 
+def _query_order(query):
+    asc = (query.get("asc") or [""])[0]
+    if asc not in ("", "0", "1"):
+        raise ValueError("排序方向无效")
+    return links.drive_order((query.get("sort") or [None])[0], None if asc == "" else asc == "1")
+
+
 class App:
     def __init__(self, cloud, watcher, user, encoded, profile_dir, clock=time.monotonic):
         self.cloud, self.watcher, self.user, self.encoded = cloud, watcher, user, encoded
@@ -186,10 +193,11 @@ class App:
             return {"tasks": [offline_view(task, watched.get(task.get("info_hash"))) for task in result.get("tasks") or []],
                     "count": int(result.get("count") or 0)}
         if path == "/api/offline/content":
+            order = _query_order(query)
             task = self.cloud.find_offline(links.task_hash((query.get("hash") or [""])[0]))
             if task is None:
                 raise ValueError("最近的云下载任务里找不到它")
-            listing = self.cloud.offline_content(task)
+            listing = self.cloud.offline_content(task, order)
             listing["task"] = offline_view(task)
             return listing
         if path == "/api/transfers":
@@ -237,13 +245,14 @@ class App:
             if kind == "links":
                 return {"kind": "links", "links": links.offline_links(text)}
             if kind == "path":
-                return self.cloud.open_path(links.drive_path(text))
+                return self.cloud.open_path(links.drive_path(text), links.drive_order(body.get("sort"), body.get("asc")))
             return self._share({"url": text, "receive_code": body.get("receive_code")})
         if path == "/api/browse":
             start = links.offset(body.get("offset"))
             if body.get("kind") == "share":
                 return self._share(body, links.folder_id(body.get("cid"), share=True), start)
-            return self.cloud.browse_drive(links.folder_id(body.get("cid", "0")), start)
+            return self.cloud.browse_drive(links.folder_id(body.get("cid", "0")), start,
+                                           links.drive_order(body.get("sort"), body.get("asc")))
         if path == "/api/download":
             if "items" in body:
                 items = links.picked_items(body["items"])

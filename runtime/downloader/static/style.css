@@ -154,12 +154,22 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
 .files tbody tr.on td { background: var(--accent-bg); }
 .files tbody tr.focus .cell { font-weight: 600; }
 .files .c { width: 44px; text-align: center; }
-.files .size {
+.files .size, .files .time {
   width: 100px; padding-right: 16px; text-align: right; color: var(--text-2);
   white-space: nowrap; font-variant-numeric: tabular-nums;
 }
+.files .time { width: 128px; }
+.sort { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: none; font-weight: 500; }
+.sort:hover, .sort.on { color: var(--text); }
+.sort i { min-width: 8px; font-style: normal; color: var(--accent); }
+.sort-select {
+  display: none; height: 32px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: 6px;
+  background: var(--panel); color: var(--text);
+}
 .cell { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 8px 7px 0; }
-.cell > span:last-child, .open { min-width: 0; overflow-wrap: anywhere; }
+.label { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.label > *, .open { max-width: 100%; overflow-wrap: anywhere; }
+.sub { display: none; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .open { padding: 0; border: 0; background: none; text-align: left; }
 .open:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .icon { display: inline-flex; flex: none; width: 18px; height: 18px; color: var(--text-3); }
@@ -239,9 +249,11 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
   .code, .add-row .btn { flex: 1; }
   .picker-head { flex-wrap: wrap; gap: 6px 8px; }
   .crumbs { flex-basis: 100%; }
-  .filter { flex: 1; width: auto; }
+  .filter { flex: 1; width: auto; min-width: 0; }
+  .sort-select { display: block; max-width: 44%; }
   .files .c { width: 38px; }
-  .files .size { width: 78px; padding-right: 10px; }
+  .files .size, .files .time { display: none; }
+  .sub { display: block; }
   .picker-foot { flex-wrap: wrap; }
   .actions { width: 100%; }
   .actions .btn { flex: 1; }
