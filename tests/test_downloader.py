@@ -701,6 +701,22 @@ class SessionTests(unittest.TestCase):
         self.assertTrue(all("expires" in cookie for cookie in restored.values()), "restored cookies must be persistent")
         self.assertFalse(keeper.restore(), "already logged in")
 
+    def test_polls_fast_when_logged_out_and_survives_a_closed_browser(self):
+        browser = FakeBrowser(cookies=LOGIN)
+        keeper = self.keeper(browser)
+        keeper.tick()
+        self.assertTrue(keeper.logged_in)
+        self.assertEqual(keeper._delay(), keeper.interval)
+        browser.cookies.clear()
+        keeper.tick()  # Logged out now; the next poll must be the fast one.
+        self.assertFalse(keeper.logged_in)
+        self.assertEqual(keeper._delay(), keeper.idle_interval)
+        closed = session.SessionKeeper(FakeBrowser(up=False).cloud(), self.path,
+                                       clock=lambda: self.now, log=lambda *a, **k: None)
+        closed.tick()  # A closed browser must not raise.
+        self.assertFalse(closed.logged_in)
+        self.assertEqual(closed._delay(), closed.idle_interval)
+
     def test_save_needs_a_login_and_restore_needs_a_file(self):
         browser = FakeBrowser(cookies=[{"name": "CID", "value": "x", "domain": ".115.com"}])  # SEID/UID missing
         keeper = self.keeper(browser)

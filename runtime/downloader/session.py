@@ -15,8 +15,12 @@ import threading
 import time
 from urllib.parse import urlsplit
 
-# The four cookies 115 sets for a login; CID/SEID/UID identify the session.
-LOGIN_COOKIES = ("UID", "CID", "SEID", "KID")
+import client
+
+# The cookies 115 sets for a login. CID/SEID/UID identify the session; the rest
+# are the other stable (non-rotating) login cookies, kept so the restored session
+# is as complete as a fresh scan.
+LOGIN_COOKIES = ("UID", "CID", "SEID", "KID", "USERSESSIONID", "GST")
 REQUIRED = frozenset(("CID", "SEID", "UID"))
 KEEP_DAYS = 365
 MAX_ATTEMPTS = 3  # Stop re-injecting a saved login once 115 keeps rejecting it.
@@ -33,11 +37,15 @@ def login_cookies(cdp):
 
 
 class SessionKeeper:
-    def __init__(self, cloud, path, interval=60, startup_delay=8, retry=300, clock=time.time, log=print):
+    def __init__(self, cloud, path, interval=60, idle_interval=2, startup_delay=3, retry=300, clock=time.time, log=print):
         self.cloud, self.path = cloud, Path(path)
-        self.interval, self.startup_delay, self.retry = interval, startup_delay, retry
+        # Poll slowly while logged in (just to keep the file fresh), fast while logged
+        # out or the browser is closed, so reopening it restores the login within seconds.
+        self.interval, self.idle_interval = interval, idle_interval
+        self.startup_delay, self.retry = startup_delay, retry
         self.clock, self.log = clock, log
         self.stopped = threading.Event()
+        self.logged_in = False
         self.saved = None            # The cookie values last written, to skip rewrites.
         self.attempt_mtime = None    # The saved file a restore was last attempted from.
         self.attempts = 0
@@ -123,7 +131,12 @@ class SessionKeeper:
                     pass
 
     def tick(self):
-        if self.save():
+        try:
+            self.logged_in = self.save()
+        except client.BrowserUnavailable:
+            self.logged_in = False  # Browser closed; poll fast to catch it reopening.
+            return
+        if self.logged_in:
             self.attempt_mtime, self.attempts = None, 0
             return
         try:
@@ -136,7 +149,13 @@ class SessionKeeper:
         if self.attempts >= MAX_ATTEMPTS or (self.attempts and now - self.last_attempt < self.retry):
             return
         self.attempts, self.last_attempt = self.attempts + 1, now
-        self.restore()
+        try:
+            self.restore()
+        except client.BrowserUnavailable:
+            pass
+
+    def _delay(self):
+        return self.interval if self.logged_in else self.idle_interval
 
     def run_forever(self):
         if self.stopped.wait(self.startup_delay):
@@ -146,17 +165,16 @@ class SessionKeeper:
                 self.tick()
             except Exception as error:  # A failed poll must not stop later polls.
                 self.log(f"Session keeper: {type(error).__name__}: {error}", flush=True)
-            if self.stopped.wait(self.interval):
+            if self.stopped.wait(self._delay()):
                 return
 
 
 def main():
     import os
-    import client
+    import sys
     profile = os.environ.get("PROFILE_DIR_IN_CONTAINER", "/etc/115")
     cloud = client.Cloud115(port=int(os.environ.get("BROWSER_DEBUG_PORT", "9222")))
     keeper = SessionKeeper(cloud, Path(profile) / "115-session.json")
-    import sys
     action = sys.argv[1] if len(sys.argv) > 1 else "once"
     if action == "save":
         print("saved" if keeper.save() else "not logged in")

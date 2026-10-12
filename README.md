@@ -133,7 +133,7 @@ docker compose logs --tail=100 browser115
 
 ## 访问和登录
 
-推荐使用 Chrome、Chromium 或 Edge，在 Docker 宿主机打开 `http://127.0.0.1:1150/`，输入 `REMOTE_USER`（默认 `115`）及配置的密码后，用 115 官方客户端扫描二维码登录。浏览器配置和登录凭据保存在 `/etc/115` 数据卷中，重建后保留。115 的登录是会话 Cookie，浏览器正常退出或容器重建后会被清掉。为此容器会在登录后把这几个登录 Cookie 保存到 `/etc/115/115-session.json`（权限 600），下次浏览器启动若未登录就自动注入为长期 Cookie，所以关闭再打开浏览器、重启或重建容器后都不用重新扫码；在别处退出登录、或 115 服务端让登录失效时仍需重新扫码。该功能由添加下载接口的进程负责（需要 `ENABLE_DOWNLOAD_API=true`，默认开启），可用 `KEEP_115_LOGIN=false` 关闭。
+推荐使用 Chrome、Chromium 或 Edge，在 Docker 宿主机打开 `http://127.0.0.1:1150/`，输入 `REMOTE_USER`（默认 `115`）及配置的密码后，用 115 官方客户端扫描二维码登录。浏览器配置和登录凭据保存在 `/etc/115` 数据卷中，重建后保留。115 的登录是会话 Cookie，浏览器正常退出或容器重建后会被清掉。为此容器会在登录后把这几个登录 Cookie 保存到 `/etc/115/115-session.json`（权限 600），浏览器启动后若检测到未登录，会在几秒内自动把它们注入为长期 Cookie 并刷新页面，所以关闭再打开浏览器、重启或重建容器后都不用重新扫码（重开后稍等几秒自动恢复登录）；在别处退出登录、或 115 服务端让登录失效时仍需重新扫码。该功能由添加下载接口的进程负责（需要 `ENABLE_DOWNLOAD_API=true`，默认开启），可用 `KEEP_115_LOGIN=false` 关闭。
 
 KasmVNC 使用浏览器原生 Basic 认证，页面和 WebSocket 均要求认证；原始 RFB TCP 端口不开放。Safari 的 Basic 认证 WebSocket 兼容性存在上游限制，优先使用 Chromium 系浏览器。[客户端说明](https://docs.kasmvnc.com/docs/clientside)
 
