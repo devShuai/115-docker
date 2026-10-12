@@ -794,20 +794,44 @@ $("auto").addEventListener("change", () => {
   }
 });
 
+// The page is served by the download API itself, so its address is the one the
+// browser reached it at — the mapped host port or the reverse-proxy domain.
+function cliExamples() {
+  return ["# 在 NAS 上执行（容器内部）",
+    "docker exec -it 115-docker 115dl apis",
+    "docker exec -it 115-docker 115dl add 'magnet:?xt=urn:btih:...' --to-nas",
+    "docker exec -it 115-docker 115dl download --path '/电影/某文件夹'",
+    "",
+    "# 从本机访问（当前地址）",
+    "DOWNLOAD_API_URL=" + location.origin + " DOWNLOAD_API_PASSWORD=密码 \\",
+    "  115dl status",
+    "curl -u 用户:密码 " + location.origin + "/api/status"].join("\n");
+}
+
 async function loadEndpoints() {
   try {
     const data = await api("api/endpoints");
-    const rows = data.endpoints.map((item) =>
+    $("api-rows").replaceChildren(...data.endpoints.map((item) =>
       h("tr", null, h("td", {text: item.cmd}), h("td", {text: item.method}),
-        h("td", null, h("code", {text: item.path})), h("td", {text: item.summary})));
-    $("api-rows").replaceChildren(...rows);
+        h("td", null, h("code", {text: item.path})), h("td", {text: item.summary}))));
   } catch (error) {
     $("api-rows").replaceChildren(h("tr", null, h("td", {colspan: "4", text: error.message})));
   }
 }
-document.querySelector(".api").addEventListener("toggle", function () {
-  if (this.open && !$("api-rows").childElementCount) loadEndpoints();
-}, {once: false});
+
+function openCli() {
+  $("cli-origin").textContent = location.origin;
+  $("cli-examples").textContent = cliExamples();
+  if (!$("api-rows").childElementCount) loadEndpoints();
+  const dialog = $("cli-dialog");
+  if (dialog.showModal) dialog.showModal();
+  else dialog.setAttribute("open", "");
+}
+$("cli-open").addEventListener("click", openCli);
+$("cli-close").addEventListener("click", () => $("cli-dialog").close());
+$("cli-dialog").addEventListener("click", (event) => {
+  if (event.target === $("cli-dialog")) $("cli-dialog").close();  // Click on the backdrop.
+});
 
 const kickStatus = every(refreshStatus, () => 15000);
 const kickTransfers = every(refreshTransfers, () => (transfers.active || Date.now() < boostUntil ? 2000 : 8000));

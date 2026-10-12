@@ -212,7 +212,7 @@ curl -u 115:密码 -H 'Content-Type: application/json' -d '{"text":"/电影/某�
 curl -u 115:密码 -H 'Content-Type: application/json' -d '{"kind":"drive","cid":"0"}' http://127.0.0.1:1151/api/browse
 curl -u 115:密码 -H 'Content-Type: application/json' \
   -d '{"items":[{"n":"a.mkv","pc":"...","is_dir":false}]}' http://127.0.0.1:1151/api/download
-# 列出全部接口（也可在页面底部“命令行与接口”查看）
+# 列出全部接口（也可点页面右上角“命令行”查看，其中的示例会用你当前访问的地址）
 curl -u 用户:密码 http://127.0.0.1:1151/api/endpoints
 # 查询：云下载任务、已完成任务的内容、NAS 传输进度、登录状态
 curl -u 115:密码 http://127.0.0.1:1151/api/offline

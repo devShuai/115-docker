@@ -69,8 +69,9 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; vertical-align: m
 .login.warn .dot { background: var(--warn); }
 .login.bad { color: var(--bad); }
 .login.bad .dot { background: var(--bad); }
+.top-right { display: flex; align-items: center; gap: 14px; margin-left: auto; }
 .activity {
-  display: flex; align-items: baseline; gap: 10px; margin-left: auto;
+  display: flex; align-items: baseline; gap: 10px;
   font-size: 13px; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 .activity strong { font-size: 20px; font-weight: 600; color: var(--accent); }
@@ -235,17 +236,27 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
 .is-failed .task-pct, .is-failed .task-meta { color: var(--bad); }
 .is-canceled { opacity: .65; }
 
-/* Command-line and endpoints reference */
-.api { padding: 0; }
-.api > summary {
-  padding: 12px 16px; font-size: 13px; color: var(--text-2); cursor: pointer; list-style: none; user-select: none;
+/* Command-line and endpoints reference (top-right button + modal) */
+.cli-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+  border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel);
+  font-size: 13px; color: var(--text-2); white-space: nowrap;
 }
-.api > summary::-webkit-details-marker { display: none; }
-.api > summary::before { content: "▸ "; color: var(--text-3); }
-.api[open] > summary::before { content: "▾ "; }
-.api > summary:hover { color: var(--text); }
-.api-body { padding: 0 16px 16px; }
-.api-intro { margin: 0 0 10px; font-size: 13px; color: var(--text-2); }
+.cli-btn:hover { background: var(--hover); color: var(--text); }
+.cli-btn svg { width: 15px; height: 15px; }
+.cli-dialog {
+  width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 80px); padding: 0;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .28);
+}
+.cli-dialog::backdrop { background: rgba(0, 0, 0, .4); }
+.cli-head {
+  position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 14px;
+}
+.cli-body { padding: 16px; overflow-y: auto; }
+.api-intro { margin: 0 0 10px; font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }
+.api-intro code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--accent); }
 .api-cli {
   margin: 0 0 14px; padding: 10px 12px; overflow-x: auto; border-radius: 6px;
   background: var(--head); border: 1px solid var(--line); font-size: 12px; line-height: 1.6;
@@ -266,6 +277,9 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
 
 @media (max-width: 640px) {
   .api-table th:nth-child(2), .api-table td:nth-child(2) { display: none; }
+  .cli-label { display: none; }
+  .cli-btn { padding: 0 9px; }
+  .top-right { gap: 10px; }
 }
 
 @media (max-width: 640px) {
