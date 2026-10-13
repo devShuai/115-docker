@@ -33,6 +33,9 @@ OFFLINE_STATES = {-1: "失败", 0: "已停止", 1: "下载中", 2: "已完成"}
 OFFLINE_KEYS = {-1: "failed", 0: "waiting", 1: "downloading", 2: "done"}
 DISPLAY_KEYS = {"finished": "done", "downloading": "downloading", "waiting": "waiting", "failed": "failed",
                 "forbidden": "failed"}
+# GET /api/offline?state=: 115's own list filters; recent = the newest page of running, failed and done.
+OFFLINE_LISTS = {"running": client.RUNNING, "failed": client.FAILED, "done": client.DONE, "all": 0}
+RECENT = ("running", "failed", "done")
 TRANSFER_KEYS = {0: "downloading", 1: "paused", 2: "done", 3: "failed", 4: "waiting"}
 ACTIVE = ("downloading", "verifying", "waiting")
 _AMOUNT = re.compile(r"\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGTP]?)(?:i?B)?", re.IGNORECASE)
@@ -292,11 +295,23 @@ class App:
         if path == "/openapi.json":
             return apidocs.openapi()
         if path == "/api/offline":
-            page = int((query.get("page") or ["1"])[0])
-            result = self.cloud.offline_tasks(max(1, min(page, 100)))
+            page = max(1, min(int((query.get("page") or ["1"])[0]), 100))
+            # page on its own keeps paging the unfiltered list, as older clients do.
+            state = (query.get("state") or ["all" if page > 1 else "recent"])[0]
+            if state == "recent":
+                results = self.cloud.offline_lists([(OFFLINE_LISTS[name], 1) for name in RECENT])
+                # A task that finishes between the requests keeps its later state.
+                latest = {task.get("info_hash") or id(task): task for result in results for task in result.get("tasks") or []}
+                tasks = sorted(latest.values(), key=lambda task: -_number(task.get("add_time")))
+                counts = {name: int(result.get("count") or 0) for name, result in zip(RECENT, results)}
+                extra = {"count": sum(counts.values()), "counts": counts}
+            elif state in OFFLINE_LISTS:
+                result = self.cloud.offline_tasks(page, OFFLINE_LISTS[state])
+                tasks, extra = result.get("tasks") or [], {"count": int(result.get("count") or 0)}
+            else:
+                raise ValueError("state 只能是 recent、running、failed、done 或 all")
             watched = {task["hash"]: task["status"] for task in self.watcher.snapshot()}
-            return {"tasks": [offline_view(task, watched.get(task.get("info_hash"))) for task in result.get("tasks") or []],
-                    "count": int(result.get("count") or 0)}
+            return {"tasks": [offline_view(task, watched.get(task.get("info_hash"))) for task in tasks], **extra}
         if path == "/api/offline/content":
             order = _query_order(query)
             task = self.cloud.find_offline(links.task_hash((query.get("hash") or [""])[0]))

@@ -4,7 +4,6 @@ The watch list lives in the profile volume so it survives container rebuilds.
 115 offline task status: -1 failed, 0 stopped, 1 downloading, 2 finished.
 """
 import json
-import math
 from pathlib import Path
 import threading
 import time
@@ -59,17 +58,6 @@ class Watcher:
             return [{"hash": key, **value} for key, value in
                     sorted(self.items.items(), key=lambda pair: -pair[1].get("added", 0))]
 
-    def _offline_tasks(self, wanted):
-        found = {}
-        for page in range(1, MAX_PAGES + 1):
-            result = self.cloud.offline_tasks(page)
-            for task in result.get("tasks") or []:
-                found[task.get("info_hash")] = task
-            pages = math.ceil(int(result.get("count") or 0) / max(1, int(result.get("page_row") or 30)))
-            if wanted <= found.keys() or page >= pages:
-                break
-        return found
-
     def tick(self):
         now = self.clock()
         with self.lock:
@@ -82,7 +70,7 @@ class Watcher:
                 self._save()
         if not waiting:
             return
-        found = self._offline_tasks(set(waiting))
+        found = self.cloud.offline_find(set(waiting), MAX_PAGES)
         updates = {}
         for key, item in waiting.items():
             task = found.get(key)

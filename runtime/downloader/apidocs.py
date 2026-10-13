@@ -19,7 +19,8 @@ ENDPOINTS = [
                 {"name": "offset", "in": "body", "desc": "翻页位置"},
                 {"name": "sort", "in": "body", "desc": "time|name|size"}, {"name": "asc", "in": "body", "desc": "true 升序"}]},
     {"cmd": "offline", "method": "GET", "path": "/api/offline", "summary": "云下载任务列表",
-     "params": [{"name": "page", "in": "query", "desc": "页码，默认 1"}]},
+     "params": [{"name": "state", "in": "query", "desc": "recent（默认）|running|failed|done|all"},
+                {"name": "page", "in": "query", "desc": "页码，用于 running/failed/done/all"}]},
     {"cmd": "add", "method": "POST", "path": "/api/offline", "summary": "把链接加入 115 云下载",
      "params": [{"name": "links", "in": "body", "required": True, "desc": "磁力/ed2k/HTTP/FTP，每行一个"},
                 {"name": "to_nas", "in": "body", "desc": "true 时完成后整体下到 NAS"}]},
@@ -67,7 +68,10 @@ SCHEMAS = {
                "cid": {"type": "string", "pattern": "^[0-9]{0,32}$",
                        "description": "网盘根为 0；分享根为留空或省略，子目录用列表中的 cid"},
                "url": STRING, "receive_code": CODE, "offset": OFFSET, "sort": SORT, "asc": ASC},
-    "offline": {"page": {"type": "integer", "default": 1, "description": "服务端将页码限制在 1–100"}},
+    "offline": {"state": {"type": "string", "enum": ["recent", "running", "failed", "done", "all"], "default": "recent",
+                          "description": "recent 为进行中、失败、已完成各取最新一页；其余对应 115 云下载的标签页，all 为不筛选"},
+                "page": {"type": "integer", "default": 1,
+                         "description": "服务端将页码限制在 1–100；省略 state 且 page>1 时按 all 翻页"}},
     "add": {"links": {"oneOf": [STRING, {"type": "array", "items": STRING}],
                       "description": "每行一个链接或字符串数组；去重后最多 100 个，支持 magnet/ed2k/HTTP(S)/FTP"},
             "to_nas": {"type": "boolean", "default": False, "description": "只跟踪本次成功创建的云下载任务"}},
@@ -99,8 +103,9 @@ EXAMPLES = {
                 "115dl --json inspect '/电影' --sort time --desc"),
     "browse": ({"kind": "drive", "cid": "0", "offset": 0}, LISTING,
                "115dl --json browse --cid 0 --offset 0"),
-    "offline": ({"page": 1}, {"tasks": [{"hash": "a"*40, "name": "example.mkv", "state": "done",
-                   "percent": 100, "ready": True}], "count": 1}, "115dl --json offline --page 1"),
+    "offline": ({"state": "recent"}, {"tasks": [{"hash": "a"*40, "name": "example.mkv", "state": "done",
+                   "percent": 100, "ready": True}], "count": 1, "counts": {"running": 0, "failed": 0, "done": 1}},
+                "115dl --json offline"),
     "add": ({"links": [MAGNET], "to_nas": True}, {"added": 1, "failed": [], "to_nas": True,
             "tasks": [{"hash": "a"*40, "name": "example.mkv"}]}, "115dl --json add '" + MAGNET + "' --to-nas"),
     "content": ({"hash": "a"*40, "sort": "time", "asc": "0"}, {**LISTING,
@@ -126,7 +131,8 @@ NOTES = {
     "apis": "examples 为结构示例，不含真实账号数据；以当前容器返回的说明为准。",
     "inspect": "此接口只识别/浏览，不发起下载。普通链接返回 {kind:links,links:[...] }；分享返回 kind=share。",
     "browse": "kind=share 必须提供 url；分享根目录省略 cid，子目录使用 items[].cid。固定分页大小由上游决定。",
-    "offline": "云端完成不代表 NAS 已完成。使用 hash 查询内容，ready=true 后再下载；count 为上游总数。",
+    "offline": "默认 recent 按添加时间从新到旧，新提交的任务无论进行中、失败还是已完成都在其中；翻看更早的任务用 state + page。"
+               "云端完成不代表 NAS 已完成。使用 hash 查询内容，ready=true 后再下载。",
     "add": "HTTP 200 仍需检查 failed；可能部分成功。重复提交可能创建重复任务，网络超时后先查询 offline，再决定是否重试。",
     "content": "hash 来自 offline；任务需完成并已搬入网盘。接口搜索最近任务，找不到或未就绪返回 400。",
     "download": "提供 path 或 items；两者都有时 items 优先。items 不可空，最多 1150 项；响应表示已提交，完成情况查询 transfers/local。",
@@ -145,7 +151,8 @@ FIELDS = {
     "offline": {"tasks[]": "hash、name、status（中文）、state（failed/waiting/downloading/done）、text",
                 "tasks[].percent / size / speed / left": "进度 0–100 / 字节 / 字节每秒 / 剩余秒",
                 "tasks[].added / folder / ready / auto": "上游时间 / 是否文件夹 / 可否下载 / 自动下载中文状态（可省略）",
-                "count": "上游任务总数，用于 page 翻页"},
+                "count": "所选列表的上游任务总数，用于 page 翻页；recent 为三类之和",
+                "counts": "仅 recent：{running, failed, done} 各类任务总数"},
     "add": {"added / failed[]": "成功数 / 失败的 {url,error,hash}；200 不代表全部成功",
             "to_nas / tasks[]": "是否自动下载到 NAS / 已加入的 {hash,name}，用于后续查询"},
     "content": {**LIST_FIELDS, "task": "对应的 offline 任务，字段同 GET /api/offline tasks[]"},
@@ -236,7 +243,8 @@ RESPONSE_SCHEMAS = {
         "resources": array_schema(object_schema({"path": STRING, "summary": STRING}))}),
     "inspect": {"oneOf": [DIRECTORY, object_schema({"kind": {"const": "links"}, "links": array_schema(STRING)}, ["kind", "links"])]},
     "browse": DIRECTORY, "content": DIRECTORY,
-    "offline": object_schema({"tasks": array_schema(OFFLINE_TASK), "count": INT}),
+    "offline": object_schema({"tasks": array_schema(OFFLINE_TASK), "count": INT,
+                              "counts": object_schema({"running": INT, "failed": INT, "done": INT})}),
     "add": object_schema({"added": INT, "to_nas": BOOL, "failed": array_schema(object_schema({
         "url": STRING, "error": STRING, "hash": STRING})), "tasks": array_schema(object_schema({"hash": STRING, "name": STRING}))}),
     "download": object_schema({"count": INT, "names": array_schema(STRING), "name": STRING, "is_dir": BOOL}),
@@ -276,8 +284,10 @@ def openapi():
             operation["requestBody"] = {"required": True, "content": {"application/json": {
                 "schema": schema, "example": item["request_example"]}}}
         elif item["params"]:
+            example = item["request_example"]
             operation["parameters"] = [{"name": p["name"], "in": "query", "required": bool(p.get("required")),
-                "description": p["desc"], "schema": p["schema"], "example": item["request_example"][p["name"]]}
+                "description": p["desc"], "schema": p["schema"],
+                **({"example": example[p["name"]]} if p["name"] in example else {})}
                 for p in item["params"]]
         paths.setdefault(item["path"], {})[item["method"].lower()] = operation
     for resource, media in [(RESOURCES[0], "text/x-python"), (RESOURCES[1], "text/markdown"), (RESOURCES[2], "application/json")]:

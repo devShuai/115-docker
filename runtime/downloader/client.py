@@ -16,6 +16,10 @@ import links
 
 HOME = "https://115.com/?cid=0&offset=0&mode=wangpan"
 TRANSFER_PAGE = "chrome://transfer-frame/"
+# The stat filters of 115's own cloud-download tabs: 正在下载, 下载失败, 完成记录.
+# Unfiltered, the list puts every unfinished task first (old failures included), so a
+# task that has just finished can sit several pages deep.
+RUNNING, FAILED, DONE = 12, 9, 11
 
 _PRELUDE = r"""
   const uid = String(window.USER_ID || window.user_id || "");
@@ -24,9 +28,12 @@ _PRELUDE = r"""
     const text = await response.text();
     try { return JSON.parse(text); } catch (error) { return {state: false, not_json: true}; }
   }
+  let signing = null;
   async function lixian(action, fields) {
-    // 115's offline plugin (offline_wl/offline5.0.js) signs every request this way.
-    const space = await getJSON("/?ct=offline&ac=space&_=" + Date.now());
+    // 115's offline plugin (offline_wl/offline5.0.js) signs every request this way;
+    // one signature serves all the requests of a call.
+    signing = signing || getJSON("/?ct=offline&ac=space&_=" + Date.now());
+    const space = await signing;
     if (!space.sign) return {state: false, login: space.not_json ? false : undefined, error: "无法获取云下载签名"};
     const body = new URLSearchParams(fields);
     body.append("uid", uid);
@@ -71,7 +78,12 @@ ADD_OFFLINE = _page_function("""
   return lixian("add_task_urls", fields);""")
 LIST_OFFLINE = _page_function("""
   if (!uid) return {login: false};
-  return lixian("task_lists", {page: String(args.page || 1)});""")
+  const pages = await Promise.all(args.lists.map(list => {
+    const fields = {page: String(list.page || 1)};
+    if (list.stat) fields.stat = String(list.stat);
+    return lixian("task_lists", fields);
+  }));
+  return pages.find(page => !page.state) || {state: true, lists: pages};""")
 BROWSE_DRIVE = _page_function("""
   if (!uid) return {login: false};
   const page = await listDrive(args.cid, args.offset, args.order);
@@ -248,21 +260,31 @@ class Cloud115:
             raise RuntimeError(_message(result, "添加云下载失败"))
         return result
 
-    def offline_tasks(self, page=1):
-        result = self._call(LIST_OFFLINE, {"page": page})
+    def offline_lists(self, lists):
+        """Pages of the offline task list in one round trip; lists holds (stat, page) pairs, stat 0 = unfiltered."""
+        result = self._call(LIST_OFFLINE, {"lists": [{"stat": stat, "page": page} for stat, page in lists]})
         if not result.get("state"):
             raise RuntimeError(_message(result, "读取云下载任务失败"))
-        return result
+        return result["lists"]
+
+    def offline_tasks(self, page=1, stat=0):
+        return self.offline_lists([(stat, page)])[0]
+
+    def offline_find(self, hashes, pages=5):
+        """info_hash -> task, looked up newest first in the running, failed and finished lists."""
+        wanted, found, stats = set(hashes), {}, [RUNNING, FAILED, DONE]
+        for page in range(1, pages + 1):
+            if not stats or wanted <= found.keys():
+                break
+            results = self.offline_lists([(stat, page) for stat in stats])
+            for result in results:
+                found.update((task["info_hash"], task) for task in result.get("tasks") or []
+                             if task.get("info_hash") in wanted)
+            stats = [stat for stat, result in zip(stats, results) if page < int(result.get("page_count") or 1)]
+        return found
 
     def find_offline(self, info_hash, pages=5):
-        for page in range(1, pages + 1):
-            result = self.offline_tasks(page)
-            for task in result.get("tasks") or []:
-                if task.get("info_hash") == info_hash:
-                    return task
-            if page >= int(result.get("page_count") or 1):
-                break
-        return None
+        return self.offline_find({info_hash}, pages).get(info_hash)
 
     @staticmethod
     def _listing(result, order=None):

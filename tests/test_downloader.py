@@ -322,14 +322,29 @@ class ClientTests(unittest.TestCase):
         self.assertEqual((listing["sort"], listing["asc"]), ("size", False))
         self.assertIn("custom_order=1", client.BROWSE_DRIVE, "without it 115 ignores the order")
 
-    def test_find_offline_reads_a_few_pages(self):
-        pages = [{"state": True, "page_count": 3, "tasks": [{"info_hash": "h1"}]},
-                 {"state": True, "page_count": 3, "tasks": [{"info_hash": "h2"}]}]
-        browser = FakeBrowser(pages=[DRIVE_TAB], results=list(pages))
-        self.assertEqual(browser.cloud().find_offline("h2"), {"info_hash": "h2"})
-        self.assertEqual([entry[2] for entry in browser.log], [{"page": 1}, {"page": 2}])
-        browser = FakeBrowser(pages=[DRIVE_TAB], results=[{"state": True, "page_count": 1, "tasks": []}])
-        self.assertIsNone(browser.cloud().find_offline("h9"))
+    def test_offline_lookups_search_the_running_failed_and_finished_lists(self):
+        def page(count, *hashes):
+            return {"state": True, "page_count": count, "tasks": [{"info_hash": key} for key in hashes]}
+        # A finished task can sit pages deep in the unfiltered list, behind every unfinished one.
+        browser = FakeBrowser(pages=[DRIVE_TAB], results=[
+            {"state": True, "lists": [page(1, "r1"), page(2, "f1"), page(3, "d1")]},
+            {"state": True, "lists": [page(2, "f2"), page(3, "d2")]},
+            {"state": True, "lists": [page(3, "d3")]}])
+        found = browser.cloud().offline_find({"r1", "d2", "missing"})
+        self.assertEqual(found, {"r1": {"info_hash": "r1"}, "d2": {"info_hash": "d2"}})
+        running, failed, done = client.RUNNING, client.FAILED, client.DONE
+        self.assertEqual([entry[2]["lists"] for entry in browser.log], [
+            [{"stat": running, "page": 1}, {"stat": failed, "page": 1}, {"stat": done, "page": 1}],
+            [{"stat": failed, "page": 2}, {"stat": done, "page": 2}],
+            [{"stat": done, "page": 3}]])
+        browser = FakeBrowser(pages=[DRIVE_TAB], results=[{"state": True, "lists": [page(9), page(9), page(9, "h1")]}])
+        self.assertEqual(browser.cloud().find_offline("h1"), {"info_hash": "h1"})
+        self.assertEqual(len(browser.log), 1, "stops once everything is found")
+        browser = FakeBrowser(pages=[DRIVE_TAB], results=[{"state": True, "lists": [page(1, "h2")]}])
+        self.assertEqual(browser.cloud().offline_tasks(2, client.DONE)["tasks"], [{"info_hash": "h2"}])
+        self.assertEqual(browser.log[0][2], {"lists": [{"stat": client.DONE, "page": 2}]})
+        with self.assertRaisesRegex(RuntimeError, "签名"):
+            FakeBrowser(pages=[DRIVE_TAB], results=[{"state": False, "error": "无法获取云下载签名"}]).cloud().offline_tasks()
 
     def test_transfers_come_from_the_transfer_list_page(self):
         transfer_page = {"id": "tf", "type": "page", "url": "chrome://transfer-frame/", "webSocketDebuggerUrl": "ws://tf"}
@@ -352,9 +367,9 @@ class FakeCloud:
     def __init__(self, tasks=(), result=None):
         self.tasks, self.result, self.downloads, self.calls = list(tasks), result, [], []
 
-    def offline_tasks(self, page=1):
-        self.calls.append(("tasks", page))
-        return {"state": True, "tasks": self.tasks, "count": len(self.tasks), "page_row": 30}
+    def offline_find(self, hashes, pages=5):
+        self.calls.append(("find", set(hashes), pages))
+        return {task["info_hash"]: task for task in self.tasks if task["info_hash"] in hashes}
 
     def offline_result(self, task):
         return self.result
@@ -451,8 +466,19 @@ class ServerCloud:
         return {"state": True, "result": [{"state": True, "info_hash": "h1", "url": urls[0]},
                                           {"state": False, "url": "x", "error_msg": "任务已存在"}]}
 
-    def offline_tasks(self, page=1):
-        return {"tasks": [{"info_hash": "h1", "name": "电影", "status": 1, "percentDone": 50.5, "size": 9}], "count": 1}
+    # 115's lists by stat: running, failed, finished, and 0 = unfiltered.
+    OFFLINE = {client.RUNNING: [{"info_hash": "h1", "name": "电影", "status": 1, "percentDone": 50.5, "size": 9,
+                                 "add_time": 20}],
+               client.FAILED: [{"info_hash": "h3", "name": "坏", "status": -1, "add_time": 30}],
+               client.DONE: [{"info_hash": "h2", "name": "剧", "status": 2, "move": 1, "pick_code": "pc2", "add_time": 10}],
+               0: []}
+
+    def offline_lists(self, lists):
+        self.calls.append(("lists", lists))
+        return [{"tasks": self.OFFLINE[stat] if page == 1 else [], "count": 10 + stat} for stat, page in lists]
+
+    def offline_tasks(self, page=1, stat=0):
+        return self.offline_lists([(stat, page)])[0]
 
     def resolve(self, parts):
         self._maybe_fail()
@@ -653,10 +679,26 @@ class ServerTests(unittest.TestCase):
 
     def test_reads_and_errors(self):
         status, _, data = self.request("GET", "/api/offline")
-        task = json.loads(data)["tasks"][0]
-        self.assertEqual(task, {"hash": "h1", "name": "电影", "status": "下载中", "state": "downloading", "text": "下载中",
-                                "percent": 50.5, "size": 9, "speed": 0, "left": 0, "added": None, "folder": False,
-                                "ready": False, "auto": jobs.WAITING})
+        recent = json.loads(data)
+        self.assertEqual([task["hash"] for task in recent["tasks"]], ["h3", "h1", "h2"], "newest first across the lists")
+        self.assertEqual(recent["tasks"][1], {"hash": "h1", "name": "电影", "status": "下载中", "state": "downloading",
+                                              "text": "下载中", "percent": 50.5, "size": 9, "speed": 0, "left": 0,
+                                              "added": 20, "folder": False, "ready": False, "auto": jobs.WAITING})
+        self.assertEqual((recent["tasks"][2]["state"], recent["tasks"][2]["ready"]), ("done", True))
+        counts = {"running": 10 + client.RUNNING, "failed": 10 + client.FAILED, "done": 10 + client.DONE}
+        self.assertEqual((recent["counts"], recent["count"]), (counts, sum(counts.values())))
+        self.assertEqual(self.cloud.calls[-1], ("lists", [(client.RUNNING, 1), (client.FAILED, 1), (client.DONE, 1)]))
+        listing = json.loads(self.request("GET", "/api/offline?state=done&page=2")[2])
+        self.assertEqual((listing, self.cloud.calls[-1]), ({"tasks": [], "count": 10 + client.DONE},
+                                                          ("lists", [(client.DONE, 2)])))
+        self.request("GET", "/api/offline?page=2")
+        self.assertEqual(self.cloud.calls[-1], ("lists", [(0, 2)]), "page alone keeps paging the unfiltered list")
+        finished = dict(ServerCloud.OFFLINE[client.RUNNING][0], status=2, move=1, pick_code="pc1")
+        with patch.dict(ServerCloud.OFFLINE, {client.DONE: [finished]}):
+            tasks = json.loads(self.request("GET", "/api/offline")[2])["tasks"]
+        self.assertEqual([(task["hash"], task["state"]) for task in tasks], [("h3", "failed"), ("h1", "done")],
+                         "a task caught finishing between the requests is listed once, as finished")
+        self.assertEqual(self.request("GET", "/api/offline?state=stuck")[0], 400)
         status, _, data = self.request("GET", "/api/offline/content?hash=" + "h1" * 4 + "&sort=name&asc=1")
         listing = json.loads(data)
         self.assertEqual((status, listing["result"]["pc"], listing["task"]["ready"]), (200, "pc1", True))
@@ -915,7 +957,11 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn(("download", [{"n": "合集", "pc": "pc1", "is_dir": True}]), self.cloud.calls)
         code, out = self.run_cli("--json", "offline")
-        self.assertEqual(json.loads(out)["tasks"][0]["name"], "电影")
+        self.assertEqual([task["name"] for task in json.loads(out)["tasks"]], ["坏", "电影", "剧"])
+        code, out = self.run_cli("offline")
+        self.assertIn(f"进行中 {10 + client.RUNNING} · 失败 {10 + client.FAILED} · 已完成 {10 + client.DONE}", out)
+        self.run_cli("offline", "--state", "done", "--page", "2")
+        self.assertEqual(self.cloud.calls[-1], ("lists", [(client.DONE, 2)]))
 
     def test_wrong_password_reports_an_auth_error(self):
         err = io.StringIO()

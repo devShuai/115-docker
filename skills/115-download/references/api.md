@@ -279,15 +279,17 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json browse --cid 0 --
 
 ## GET /api/offline — 云下载任务列表
 
-云端完成不代表 NAS 已完成。使用 hash 查询内容，ready=true 后再下载；count 为上游总数。
+默认 recent 按添加时间从新到旧，新提交的任务无论进行中、失败还是已完成都在其中；翻看更早的任务用 state + page。云端完成不代表 NAS 已完成。使用 hash 查询内容，ready=true 后再下载。
 
-CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json offline --page 1`
+CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json offline`
 
 参数：
 
-- page (query, 可选)：页码，默认 1；{"type": "integer", "default": 1, "description": "服务端将页码限制在 1–100"}
+- state (query, 可选)：recent（默认）|running|failed|done|all；{"type": "string", "enum": ["recent", "running", "failed", "done", "all"], "default": "recent", "description": "recent 为进行中、失败、已完成各取最新一页；其余对应 115 云下载的标签页，all 为不筛选"}
 
-请求：`GET /api/offline?page=1`
+- page (query, 可选)：页码，用于 running/failed/done/all；{"type": "integer", "default": 1, "description": "服务端将页码限制在 1–100；省略 state 且 page>1 时按 all 翻页"}
+
+请求：`GET /api/offline?state=recent`
 
 200 返回示例（示意数据）：
 
@@ -302,7 +304,12 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json offline --page 1`
       "ready": true
     }
   ],
-  "count": 1
+  "count": 1,
+  "counts": {
+    "running": 0,
+    "failed": 0,
+    "done": 1
+  }
 }
 ```
 
@@ -312,7 +319,9 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json offline --page 1`
 
 - tasks[].added / folder / ready / auto：上游时间 / 是否文件夹 / 可否下载 / 自动下载中文状态（可省略）
 
-- count：上游任务总数，用于 page 翻页
+- count：所选列表的上游任务总数，用于 page 翻页；recent 为三类之和
+
+- counts：仅 recent：{running, failed, done} 各类任务总数
 
 ## POST /api/offline — 把链接加入 115 云下载
 

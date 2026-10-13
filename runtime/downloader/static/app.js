@@ -215,6 +215,8 @@ async function refreshTransfers() {
 /* ---------- Cloud (offline) downloads ---------- */
 
 const AUTO = {"等待云下载完成": "完成后自动下载到 NAS", "已开始下载到 NAS": "已自动下载到 NAS", "云下载失败": "未能自动下载"};
+// Older failures stay in 115's own 下载失败 list instead of crowding 云下载.
+const FAILED_SECONDS = 7 * 86400;
 const waiting = new Map();
 let cloud = [];
 
@@ -234,9 +236,13 @@ function cloudRow(node, task) {
 
 async function refreshCloud() {
   try {
+    // The newest tasks of each kind (running, failed, finished), newest first.
     cloud = (await api("api/offline")).tasks;
     const key = (task) => task.hash || task.name;
-    sync($("cloud"), cloud.filter((task) => task.state !== "done"), key, cloudRow, "没有进行中的云下载");
+    const since = Date.now() / 1000 - FAILED_SECONDS;
+    const running = cloud.filter((task) => task.state === "downloading" || task.state === "waiting");
+    const failed = cloud.filter((task) => task.state === "failed" && Number(task.added) > since);
+    sync($("cloud"), running.concat(failed), key, cloudRow, "没有进行中的云下载");
     sync($("cloud-done"), cloud.filter((task) => task.state === "done"), key, cloudRow, "最近没有完成的云下载");
   } catch (error) {
     if (!cloud.length) {

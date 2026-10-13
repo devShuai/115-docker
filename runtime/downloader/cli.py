@@ -140,7 +140,11 @@ def show_offline(data, _):
         extra = f" {task['percent']:.0f}%" if task.get("state") == "downloading" else ""
         ready = " [可选择内容]" if task.get("ready") else ""
         print(f"  {task.get('state', ''):<12}{extra:<6} {task.get('hash', '')[:16]}  {task.get('name', '')}{ready}")
-    print(f"  共 {data.get('count', 0)} 个任务")
+    counts = data.get("counts")
+    if counts:
+        print(f"  进行中 {counts.get('running', 0)} · 失败 {counts.get('failed', 0)} · 已完成 {counts.get('done', 0)}")
+    else:
+        print(f"  共 {data.get('count', 0)} 个任务")
 
 
 def show_transfers(data, _):
@@ -196,7 +200,7 @@ def run(args):
     if args.command == "add":
         return api.request("POST", "/api/offline", {"links": "\n".join(args.links), "to_nas": args.to_nas}), show_add
     if args.command == "offline":
-        return api.request("GET", "/api/offline", query={"page": args.page}), show_offline
+        return api.request("GET", "/api/offline", query={"state": args.state, "page": args.page}), show_offline
     if args.command == "content":
         return api.request("GET", "/api/offline/content",
                            query={"hash": args.hash, "sort": args.sort, "asc": _asc(args.asc)}), show_listing
@@ -276,7 +280,9 @@ def build_parser():
     add.add_argument("links", nargs="+")
     add.add_argument("--to-nas", action="store_true", help="完成后整体下到 NAS")
     offline = sub.add_parser("offline", help="云下载任务列表")
-    offline.add_argument("--page", type=int, default=1)
+    offline.add_argument("--state", choices=("recent", "running", "failed", "done", "all"),
+                         help="默认 recent：进行中、失败、已完成各取最新一页")
+    offline.add_argument("--page", type=int, help="翻页，用于 running/failed/done/all")
     content = sub.add_parser("content", help="云下载完成后的内容")
     content.add_argument("hash")
     _sorting(content)
