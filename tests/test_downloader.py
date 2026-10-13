@@ -3,8 +3,10 @@ import contextlib
 import http.client
 import io
 import json
+import os
 from pathlib import Path
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import threading
@@ -15,6 +17,7 @@ from urllib.error import URLError
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "runtime/downloader"))
 import auth  # noqa: E402
+import apidocs  # noqa: E402
 import cli  # noqa: E402
 import client  # noqa: E402
 import history  # noqa: E402
@@ -528,6 +531,46 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertLessEqual({"/api/status", "/api/inspect", "/api/transfers", "/api/endpoints"}, paths)
 
+    def test_complete_reference_and_openapi_cover_every_operation(self):
+        spec = json.loads(self.request("GET", "/openapi.json")[2])
+        docs = json.loads(self.request("GET", "/api/endpoints")[2])
+        self.assertEqual(len(docs["endpoints"]), 12)
+        self.assertEqual(spec["security"], [{"desktopBasic": []}])
+        for item in docs["endpoints"]:
+            operation = spec["paths"][item["path"]][item["method"].lower()]
+            self.assertEqual(operation["operationId"], item["cmd"])
+            self.assertEqual(operation["responses"]["200"]["content"]["application/json"]["example"], item["response_example"])
+            self.assertTrue(item["notes"])
+            self.assertTrue(item["response_fields"])
+            for param in item["params"]:
+                self.assertIn("schema", param)
+        body = spec["paths"]["/api/download"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+        self.assertEqual(body["anyOf"], [{"required": ["path"]}, {"required": ["items"]}])
+        self.assertEqual(body["properties"]["items"]["maxItems"], links.MAX_ITEMS)
+        self.assertEqual({e["status"] for e in docs["errors"]}, {400, 401, 403, 404, 409, 413, 415, 429, 500, 502, 503})
+
+    def test_agent_resources_require_auth_and_client_is_self_contained(self):
+        for path in ("/115dl.py", "/agent.md", "/openapi.json"):
+            self.assertEqual(self.request("GET", path, password=None)[0], 401)
+            self.assertEqual(self.request("GET", path)[0], 200)
+        code, headers, source = self.request("GET", "/115dl.py")
+        self.assertIn("attachment", headers["Content-Disposition"])
+        self.assertEqual(source, (ROOT / "runtime/downloader/cli.py").read_bytes())
+        script = Path(self.temporary.name) / "115dl.py"
+        script.write_bytes(source)
+        env = dict(os.environ, DOWNLOAD_API_URL=f"http://127.0.0.1:{self.httpd.server_address[1]}",
+                   DOWNLOAD_API_USER="115", DOWNLOAD_API_PASSWORD="Check123")
+        env.pop("DOWNLOAD_API_PASSWORD_FILE", None)
+        result = subprocess.run([sys.executable, "-I", str(script), "--no-input", "--json", "status"],
+                                stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(json.loads(result.stdout)["logged_in"])
+        guide = self.request("GET", "/agent.md")[2].decode()
+        self.assertNotIn("Check123", guide)
+        self.assertIn("--no-input --json", guide)
+        for item in apidocs.ENDPOINTS:
+            self.assertIn(item["method"] + " " + item["path"], guide)
+
     def test_authentication_and_security_headers(self):
         status, headers, _ = self.request("GET", "/", password=None)
         self.assertEqual(status, 401)
@@ -820,6 +863,38 @@ class CliTests(unittest.TestCase):
             code = cli.main([self.base[0], self.base[1], "--user", "115", "--password", "nope", "status"])
         self.assertEqual(code, 2)
         self.assertIn("认证", err.getvalue())
+
+    def test_share_url_does_not_override_api_url(self):
+        code, out = self.run_cli("--json", "share", "https://115cdn.com/s/abcd1234", "--code", "abcd")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["count"], 2)
+        self.assertIn(("share", "abcd1234", "abcd", "https://115cdn.com/s/abcd1234?password=abcd", None), self.cloud.calls)
+
+    def test_json_errors_include_http_status_and_local_errors_without_traceback(self):
+        for args, expected in [(["--url", self.base[1], "--password", "wrong", "--json", "status"], 401),
+                               (self.base + ["--json", "download", "--items", "bad-json"], None),
+                               (["--json", "--invalid-flag"], None)]:
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = cli.main(args)
+            self.assertEqual(code, 2)
+            self.assertEqual(out.getvalue(), "")
+            self.assertEqual(json.loads(err.getvalue())["status"], expected)
+            self.assertNotIn("Traceback", err.getvalue())
+
+    def test_password_file_and_no_input_mode(self):
+        password_file = Path(self.temporary.name) / "password"
+        password_file.write_text("Check123\n")
+        with patch.dict(os.environ, {"DOWNLOAD_API_PASSWORD_FILE": str(password_file), "DOWNLOAD_API_PASSWORD": "wrong"}):
+            code, _ = self.run_cli("--password", "", "--no-input", "status")
+        self.assertEqual(code, 0)
+        with patch.dict(os.environ, {}, clear=True), patch.object(sys.stdin, "isatty", return_value=True), \
+                patch.object(cli.getpass, "getpass", side_effect=AssertionError("must not prompt")):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                code = cli.main(["--no-input", "--json", "status"])
+        self.assertEqual(code, 2)
+        self.assertIn("缺少密码", json.loads(err.getvalue())["error"])
 
 
 if __name__ == "__main__":

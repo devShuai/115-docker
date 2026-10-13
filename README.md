@@ -24,7 +24,7 @@
 | 网盘和分享内容选择 | 浏览网盘、解析路径与分享链接、进入子目录、勾选文件或文件夹；网盘支持按完成时间、名称、大小排序 |
 | 下载进度 | 查看云下载任务、等待任务、NAS 下载进度、速度与剩余时间；传输列表关闭时显示本地下载记录 |
 | 自动保持登录 | 扫码后保存登录 Cookie，浏览器重开或容器重建后尝试恢复登录；未登录时每 2 秒检查，已登录时每分钟检查 |
-| CLI 与 JSON API | 内置 `115dl`，页面与接口使用同一套凭据；右上角“命令行与接口”弹窗提供使用当前访问地址的示例 |
+| CLI 与 JSON API | 内置 `115dl`，页面提供完整参数、返回值、错误码；可下载安装独立客户端，agent 可读取 Markdown 和 OpenAPI 文档 |
 | 数据持久化 | 浏览器配置、登录状态、自动下载任务保存在 profile，下载文件存放在独立挂载目录 |
 | 工程内依赖与验收 | vendor 固定版本与 SHA256；OneDev 验证实际桌面连接、缩放、鼠标坐标、性能和登录恢复后才发布 `latest` |
 
@@ -221,11 +221,50 @@ python3 runtime/downloader/cli.py --url https://downloads.example.com --user 115
 python3 runtime/downloader/cli.py --url http://127.0.0.1:1151 --json transfers
 ```
 
-连接参数支持 `--url` / `DOWNLOAD_API_URL`、`--user` / `DOWNLOAD_API_USER`、`--password` / `DOWNLOAD_API_PASSWORD`。默认地址为 `http://127.0.0.1:1151`，用户名默认使用 `REMOTE_USER` 或 `115`；没有传入密码时交互询问。自动化调用需提供凭据。`--json` 输出原始 JSON，`raw` 可调用任意接口。
+连接参数支持 `--url` / `DOWNLOAD_API_URL`、`--user` / `DOWNLOAD_API_USER`。默认地址为 `http://127.0.0.1:1151`，用户名默认使用 `REMOTE_USER` 或 `115`。密码优先级：`--password` → `--password-file` / `DOWNLOAD_API_PASSWORD_FILE` → `DOWNLOAD_API_PASSWORD` → `API_PASSWORD`；密码文件使用 UTF-8，文件末尾换行会去除。没有凭据时交互询问；`--no-input` 禁止询问，缺少凭据直接失败。
+
+**全局参数必须放在子命令前**。`--json` 成功输出原始 JSON 到 stdout，失败输出 `{"error":"说明","status":401}` 到 stderr；本地输入/连接错误的 `status` 为 `null`。退出码成功为 0，失败为 2。`raw` 可直接调用接口。
+
+### agent 安装与调用
+
+下载页面右上角“命令行与接口”提供按当前地址生成的安装命令。客户端下载自正在运行的容器，与服务端版本一致；仅使用 Python 3.8+ 标准库，无需 pip、Docker 或 sudo。Linux/macOS 示例：
+
+```bash
+export DOWNLOAD_API_URL='http://NAS_IP:11502'  # 或自己的 HTTPS 入口
+export DOWNLOAD_API_USER='115'               # 与桌面用户名相同
+# DOWNLOAD_API_PASSWORD 由 agent 的密钥环境注入
+: "${DOWNLOAD_API_PASSWORD:?请通过密钥环境提供桌面密码}"
+mkdir -p "$HOME/.local/bin"
+curl --fail --silent --show-error --user "$DOWNLOAD_API_USER:$DOWNLOAD_API_PASSWORD" \
+  "$DOWNLOAD_API_URL/115dl.py" --output "$HOME/.local/bin/115dl.tmp" && \
+  python3 -m py_compile "$HOME/.local/bin/115dl.tmp" && \
+  chmod 700 "$HOME/.local/bin/115dl.tmp" && mv "$HOME/.local/bin/115dl.tmp" "$HOME/.local/bin/115dl"
+export PATH="$HOME/.local/bin:$PATH"
+115dl --no-input --json status
+115dl --no-input --json apis
+115dl --no-input --json browse --cid 0
+# 也可改用密码文件
+115dl --password-file /path/to/desktop-password --no-input --json transfers
+```
+
+重复下载步骤即可更新客户端。Windows 下载 `/115dl.py` 后，用 `python 115dl.py --no-input --json status` 调用。源码也包含在 [runtime/downloader/cli.py](runtime/downloader/cli.py)。
+
+agent 可用同一账号读取以下资源，不需要额外 API Key：
+
+| GET 路径 | 内容 |
+| --- | --- |
+| `/agent.md` | 可直接交给 agent 的安装步骤、接口参数、请求/返回示例、错误处理和任务执行流程 |
+| `/openapi.json` | OpenAPI 3.1，含 HTTP Basic 认证、请求 schema、条件参数和返回说明 |
+| `/115dl.py` | 当前容器的独立 CLI 源码 |
+| `/api/endpoints` | 机器可读的完整说明，与页面和 agent 文档使用同一份定义 |
+
+执行流程：先用 `status` 确认登录，再 `inspect` / `browse` 列目录；把 `name` 映射为 `n`，原样复制 `pc` / `sc` 和 `is_dir` 提交选中项。云下载 `add` 后检查 `failed`，使用 `content` 查询完成内容；`--to-nas` 自动转到 NAS。分享浏览示例：`115dl --no-input --json browse --share 'https://115cdn.com/s/分享码' --code abcd --cid ''`。
+
+提交下载的 200 响应表示已创建任务。每 3–5 秒查询 `transfers`，以 `state=done` 判断 NAS 下载完成；`verifying` 仍在校验，不能仅按 `progress=1` 判断。`live=false` 时显示历史数据，可用 `local` 核对。`watch` 的“已开始下载到 NAS”只表示已提交。POST 超时后先查已有任务，避免盲目重复提交。
 
 ### JSON API
 
-页面右上角“命令行与接口”弹窗会根据 **当前页面地址**生成示例，不需要手动猜测 NAS 的映射端口。`GET /api/endpoints` 返回完整命令、接口与参数说明。
+页面右上角“命令行与接口”弹窗根据 **当前页面地址**生成安装与请求示例，逐项展示全部 12 个 API 操作的参数类型、默认值、必填条件、分页方式、请求/返回 JSON、字段含义和通用错误码。`GET /api/endpoints` 返回相同说明；`/agent.md` 可供 agent 直接读取。
 
 | 方法 | 路径 | 功能 |
 | --- | --- | --- |

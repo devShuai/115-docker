@@ -15,12 +15,15 @@ Connection and credentials come from flags or the environment:
   --url   / DOWNLOAD_API_URL       (default http://127.0.0.1:1151)
   --user  / DOWNLOAD_API_USER      (default REMOTE_USER, else 115)
   --password / DOWNLOAD_API_PASSWORD   (else prompt)
+  --password-file / DOWNLOAD_API_PASSWORD_FILE   (UTF-8 secret file)
+  --no-input --json                    (noninteractive, machine-readable)
 """
 import argparse
 import base64
 import getpass
 import json
 import os
+from pathlib import Path
 import sys
 import urllib.error
 import urllib.parse
@@ -30,11 +33,21 @@ TIMEOUT = 60
 
 
 class ApiError(Exception):
-    pass
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        raise ApiError(message)
 
 
 class Api:
     def __init__(self, url, user, password):
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ApiError("--url 需要不含账号、查询参数和片段的 HTTP(S) 服务地址")
         self.url = url.rstrip("/")
         self.auth = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
 
@@ -59,8 +72,8 @@ class Api:
             except ValueError:
                 pass
             if error.code == 401:
-                raise ApiError("认证失败：检查用户名和密码（与远程桌面相同）") from error
-            raise ApiError(f"{error.code} {detail}") from error
+                raise ApiError("认证失败：检查用户名和密码（与远程桌面相同）", error.code) from error
+            raise ApiError(f"{error.code} {detail}", error.code) from error
         except urllib.error.URLError as error:
             raise ApiError(f"无法连接 {self.url}：{error.reason}") from error
 
@@ -78,11 +91,24 @@ def dump(data):
 
 
 def show_apis(data, _):
+    print(data.get("auth", ""))
+    print(data.get("limits", ""))
     for item in data["endpoints"]:
         print(f"  {item['cmd']:<10} {item['method']:<4} {item['path']:<24} {item['summary']}")
         for param in item.get("params") or []:
             flag = "*" if param.get("required") else " "
-            print(f"       {flag}{param['name']:<14} {param.get('desc', '')}")
+            schema = json.dumps(param.get("schema", {}), ensure_ascii=False)
+            print(f"       {flag}{param['name']:<14} [{param['in']}] {param.get('desc', '')} {schema}")
+        print("    约束:", item.get("notes", ""))
+        print("    CLI:", item.get("cli_example", ""))
+        print("    请求:", json.dumps(item.get("request_example"), ensure_ascii=False))
+        print("    返回示例:", json.dumps(item.get("response_example"), ensure_ascii=False))
+        for field, description in item.get("response_fields", {}).items():
+            print(f"       {field}: {description}")
+    for error in data.get("errors", []):
+        print(f"  错误 {error['status']}: {error['desc']}")
+    for resource in data.get("resources", []):
+        print(f"  GET {resource['path']}: {resource['summary']}")
 
 
 def show_status(data, _):
@@ -187,7 +213,7 @@ def run(args):
         body = {"items": _items(args.items)} if args.items else {"path": args.path}
         return api.request("POST", "/api/download", body), show_download
     if args.command == "share":
-        body = _clean({"url": args.url, "receive_code": args.code})
+        body = _clean({"url": args.share_url, "receive_code": args.code})
         if args.items:
             body["items"] = _items(args.items)
         return api.request("POST", "/api/share", body), show_share
@@ -219,19 +245,28 @@ def _items(raw):
 
 
 def resolve_password(args):
-    password = args.password or os.environ.get("DOWNLOAD_API_PASSWORD") or os.environ.get("API_PASSWORD")
+    if args.password:
+        return args.password
+    if args.password_file:
+        password = Path(args.password_file).read_text(encoding="utf-8").rstrip("\r\n")
+        if not password:
+            raise ApiError("密码文件为空")
+        return password
+    password = os.environ.get("DOWNLOAD_API_PASSWORD") or os.environ.get("API_PASSWORD")
     if password:
         return password
-    if sys.stdin.isatty():
+    if not args.no_input and sys.stdin.isatty():
         return getpass.getpass(f"{args.user} 的密码: ")
-    raise ApiError("缺少密码：用 --password、DOWNLOAD_API_PASSWORD 环境变量，或在终端运行以便输入")
+    raise ApiError("缺少密码：用 --password-file 或 DOWNLOAD_API_PASSWORD 环境变量提供凭据")
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(prog="115dl", description="115 下载命令行客户端")
+    parser = Parser(prog="115dl", description="115 下载命令行客户端；全局参数放在子命令前")
     parser.add_argument("--url", default=os.environ.get("DOWNLOAD_API_URL", "http://127.0.0.1:1151"))
     parser.add_argument("--user", default=os.environ.get("DOWNLOAD_API_USER") or os.environ.get("REMOTE_USER") or "115")
     parser.add_argument("--password")
+    parser.add_argument("--password-file", default=os.environ.get("DOWNLOAD_API_PASSWORD_FILE"), help="UTF-8 密码文件（或 DOWNLOAD_API_PASSWORD_FILE）")
+    parser.add_argument("--no-input", action="store_true", help="非交互调用，缺少密码时直接报错")
     parser.add_argument("--json", action="store_true", help="输出原始 JSON")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -259,7 +294,7 @@ def build_parser():
     download.add_argument("--path", help="网盘路径（整项下载）")
     download.add_argument("--items", help='勾选条目的 JSON：[{"n":..,"pc":..,"is_dir":false}]')
     share = sub.add_parser("share", help="下载分享内容到 NAS")
-    share.add_argument("url")
+    share.add_argument("share_url", metavar="url")
     share.add_argument("--code", help="提取码")
     share.add_argument("--items", help='勾选条目的 JSON：[{"n":..,"sc":..,"is_dir":false}]')
     sub.add_parser("transfers", help="NAS 实时传输进度")
@@ -280,11 +315,16 @@ def _sorting(parser):
 
 
 def main(argv=None):
-    args = build_parser().parse_args(argv)
+    argv = list(sys.argv[1:] if argv is None else argv)
+    json_errors = "--json" in argv
     try:
+        args = build_parser().parse_args(argv)
         data, render = run(args)
-    except ApiError as error:
-        print(error, file=sys.stderr)
+    except (ApiError, ValueError, OSError) as error:
+        if json_errors:
+            print(json.dumps({"error": str(error), "status": getattr(error, "status", None)}, ensure_ascii=False), file=sys.stderr)
+        else:
+            print(error, file=sys.stderr)
         return 2
     if args.json or render is None:
         dump(data)

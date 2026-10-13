@@ -283,6 +283,24 @@ def verify_download_api(debug_port):
     status, body = api_request('GET', '/api/endpoints')
     paths = {item['path'] for item in json.loads(body)['endpoints']}
     assert status == 200 and {'/api/status', '/api/inspect', '/api/transfers'} <= paths, body
+    for resource in ('/115dl.py', '/agent.md', '/openapi.json'):
+        assert api_request('GET', resource, credentials=None)[0] == 401, resource
+        status, data = api_request('GET', resource)
+        assert status == 200, resource
+        if resource == '/115dl.py':
+            assert data == Path('/opt/115/downloader/cli.py').read_bytes()
+            downloaded = Path('/tmp/115dl-ci.py')
+            downloaded.write_bytes(data)
+            result = subprocess.run(['python3', '-I', str(downloaded), '--no-input', '--json', 'status'],
+                                    env={**os.environ, 'DOWNLOAD_API_PASSWORD': PASSWORD, 'DOWNLOAD_API_USER': '115',
+                                         'DOWNLOAD_API_URL': 'http://127.0.0.1:1151'},
+                                    stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20)
+            assert result.returncode == 0 and json.loads(result.stdout)['browser'] is True, result.stderr
+        elif resource == '/openapi.json':
+            spec = json.loads(data)
+            assert spec['openapi'] == '3.1.0' and '/api/share' in spec['paths']
+        else:
+            assert b'--no-input --json' in data
     # The bundled command-line client speaks to the same API.
     cli = subprocess.run(['115dl', '--url', 'http://127.0.0.1:1151', '--user', '115', '--password', PASSWORD, 'apis'],
                          capture_output=True, text=True, timeout=20)

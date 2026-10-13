@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlsplit
 # Sibling modules load even under python -I or PYTHONSAFEPATH.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import auth  # noqa: E402
+import apidocs  # noqa: E402
 import client  # noqa: E402
 import history  # noqa: E402
 import jobs  # noqa: E402
@@ -43,41 +44,7 @@ ERRORS = ((ValueError, HTTPStatus.BAD_REQUEST), (client.NotLoggedIn, HTTPStatus.
           (client.VerificationRequired, HTTPStatus.CONFLICT), (client.BrowserUnavailable, HTTPStatus.SERVICE_UNAVAILABLE),
           (RuntimeError, HTTPStatus.BAD_GATEWAY))
 
-# The API surface, shared by GET /api/endpoints, the command-line client and the page.
-ENDPOINTS = [
-    {"cmd": "status", "method": "GET", "path": "/api/status", "summary": "登录与浏览器状态", "params": []},
-    {"cmd": "apis", "method": "GET", "path": "/api/endpoints", "summary": "列出所有接口", "params": []},
-    {"cmd": "inspect", "method": "POST", "path": "/api/inspect", "summary": "识别链接或网盘路径，列出可下载内容",
-     "params": [{"name": "text", "in": "body", "required": True, "desc": "链接、分享链接或网盘路径"},
-                {"name": "receive_code", "in": "body", "desc": "分享提取码"},
-                {"name": "sort", "in": "body", "desc": "time|name|size"},
-                {"name": "asc", "in": "body", "desc": "true 升序"}]},
-    {"cmd": "browse", "method": "POST", "path": "/api/browse", "summary": "浏览网盘或分享目录",
-     "params": [{"name": "kind", "in": "body", "desc": "drive（默认）或 share"},
-                {"name": "cid", "in": "body", "desc": "目录 ID，网盘根为 0"},
-                {"name": "url", "in": "body", "desc": "分享链接（kind=share）"},
-                {"name": "receive_code", "in": "body", "desc": "分享提取码"},
-                {"name": "offset", "in": "body", "desc": "翻页位置"},
-                {"name": "sort", "in": "body", "desc": "time|name|size"}, {"name": "asc", "in": "body", "desc": "true 升序"}]},
-    {"cmd": "offline", "method": "GET", "path": "/api/offline", "summary": "云下载任务列表",
-     "params": [{"name": "page", "in": "query", "desc": "页码，默认 1"}]},
-    {"cmd": "add", "method": "POST", "path": "/api/offline", "summary": "把链接加入 115 云下载",
-     "params": [{"name": "links", "in": "body", "required": True, "desc": "磁力/ed2k/HTTP/FTP，每行一个"},
-                {"name": "to_nas", "in": "body", "desc": "true 时完成后整体下到 NAS"}]},
-    {"cmd": "content", "method": "GET", "path": "/api/offline/content", "summary": "云下载完成后的内容",
-     "params": [{"name": "hash", "in": "query", "required": True, "desc": "任务 info_hash"},
-                {"name": "sort", "in": "query", "desc": "time|name|size"}, {"name": "asc", "in": "query", "desc": "1 升序"}]},
-    {"cmd": "download", "method": "POST", "path": "/api/download", "summary": "下载网盘内容到 NAS",
-     "params": [{"name": "path", "in": "body", "desc": "网盘路径（整项下载）"},
-                {"name": "items", "in": "body", "desc": "勾选的条目 [{n, pc, is_dir}]"}]},
-    {"cmd": "share", "method": "POST", "path": "/api/share", "summary": "下载分享内容到 NAS",
-     "params": [{"name": "url", "in": "body", "required": True, "desc": "115 分享链接"},
-                {"name": "receive_code", "in": "body", "desc": "提取码"},
-                {"name": "items", "in": "body", "desc": "勾选的条目 [{n, sc, is_dir}]，省略则全部"}]},
-    {"cmd": "transfers", "method": "GET", "path": "/api/transfers", "summary": "NAS 实时传输进度", "params": []},
-    {"cmd": "local", "method": "GET", "path": "/api/local", "summary": "NAS 本地下载记录", "params": []},
-    {"cmd": "watch", "method": "GET", "path": "/api/watch", "summary": "等待下到 NAS 的任务", "params": []},
-]
+ENDPOINTS = apidocs.ENDPOINTS
 
 
 class NotFound(Exception):
@@ -258,7 +225,9 @@ class App:
         if path == "/api/status":
             return self.cloud.status()
         if path == "/api/endpoints":
-            return {"endpoints": ENDPOINTS}
+            return apidocs.reference()
+        if path == "/openapi.json":
+            return apidocs.openapi()
         if path == "/api/offline":
             page = int((query.get("page") or ["1"])[0])
             result = self.cloud.offline_tasks(max(1, min(page, 100)))
@@ -389,6 +358,13 @@ def handler_for(app):
             if not self.authorized():
                 return
             url = urlsplit(self.path)
+            if url.path == "/115dl.py":
+                self.send(HTTPStatus.OK, (STATIC.parent / "cli.py").read_bytes(), "text/x-python; charset=utf-8",
+                          {"Content-Disposition": 'attachment; filename="115dl.py"'})
+                return
+            if url.path == "/agent.md":
+                self.send(HTTPStatus.OK, apidocs.agent_guide().encode(), "text/markdown; charset=utf-8")
+                return
             if url.path in FILES:
                 name, content_type = FILES[url.path]
                 self.send(HTTPStatus.OK, (STATIC / name).read_bytes(), content_type)

@@ -113,11 +113,22 @@
     </div>
     <div class="cli-body">
       <p class="api-intro">可用命令行客户端或直接调用 JSON 接口，用户名和密码与本页相同。本页地址：<code id="cli-origin"></code>。</p>
+      <h3>安装客户端 · agent 非交互调用</h3>
+      <p class="api-intro">Python 3.8+ 标准库客户端，无需 pip 或 Docker。凭据从环境或密码文件读取；全局参数放在子命令前。</p>
       <pre class="api-cli"><code id="cli-examples"></code></pre>
+      <p class="api-intro">凭据优先级：--password → --password-file / DOWNLOAD_API_PASSWORD_FILE → DOWNLOAD_API_PASSWORD → API_PASSWORD。地址使用 --url / DOWNLOAD_API_URL，用户名使用 --user / DOWNLOAD_API_USER。</p>
+      <p class="api-intro">--no-input 禁止询问密码；--json 成功输出到 stdout，失败输出 {error,status} 到 stderr。退出码：成功 0，失败 2；本地输入或连接错误 status 为 null。</p>
+      <nav id="cli-resources" class="api-resources" aria-label="agent 资源"></nav>
+      <h3>调用约定与错误</h3>
+      <p id="api-conventions" class="api-intro"></p>
+      <p class="api-intro">错误响应统一为 {"error":"说明"}。云下载使用 percent 0–100，NAS 传输使用 progress 0–1；以 state=done 确认完成。提交下载后的 200 表示任务已提交。POST 超时后先查询已有任务，避免重复提交。</p>
+      <div id="api-errors" class="api-errors"></div>
+      <h3>完整接口说明</h3>
       <table class="api-table">
         <thead><tr><th>命令</th><th>方法</th><th>路径</th><th>说明</th></tr></thead>
         <tbody id="api-rows"></tbody>
       </table>
+      <div id="api-details"></div>
     </div>
   </dialog>
 </body>

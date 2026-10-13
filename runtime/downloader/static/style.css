@@ -245,7 +245,7 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
 .cli-btn:hover { background: var(--hover); color: var(--text); }
 .cli-btn svg { width: 15px; height: 15px; }
 .cli-dialog {
-  width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 80px); padding: 0;
+  width: min(960px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0;
   border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text);
   box-shadow: 0 16px 48px rgba(0, 0, 0, .28);
 }
@@ -255,6 +255,23 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
   padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 14px;
 }
 .cli-body { padding: 16px; overflow-y: auto; }
+.cli-body h3 { margin: 20px 0 10px; font-size: 15px; }
+.cli-body h3:first-child { margin-top: 14px; }
+.cli-body h4 { margin: 12px 0 6px; font-size: 13px; }
+.api-resources { display: flex; flex-direction: column; gap: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.api-resources a { color: var(--accent); }
+.api-errors { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px 16px; }
+.api-errors p { margin: 0; font-size: 12px; color: var(--text-2); }
+.api-detail { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; }
+.api-detail summary { cursor: pointer; font-size: 13px; overflow-wrap: anywhere; }
+.api-detail[open] summary { margin-bottom: 12px; }
+.api-scroll { overflow-x: auto; }
+.api-detail .api-table { min-width: 520px; }
+.api-detail .api-table p { margin: 4px 0; }
+.api-detail code { overflow-wrap: anywhere; }
+.api-fields { font-size: 12px; line-height: 1.6; }
+.api-fields dt { margin-top: 8px; font-weight: 600; overflow-wrap: anywhere; }
+.api-fields dd { margin: 2px 0; color: var(--text-2); }
 .api-intro { margin: 0 0 10px; font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }
 .api-intro code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--accent); }
 .api-cli {
@@ -276,7 +293,6 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
 }
 
 @media (max-width: 640px) {
-  .api-table th:nth-child(2), .api-table td:nth-child(2) { display: none; }
   .cli-label { display: none; }
   .cli-btn { padding: 0 9px; }
   .top-right { gap: 10px; }

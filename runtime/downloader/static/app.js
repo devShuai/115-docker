@@ -810,33 +810,61 @@ $("auto").addEventListener("change", () => {
 
 // The page is served by the download API itself, so its address is the one the
 // browser reached it at — the mapped host port or the reverse-proxy domain.
-function cliExamples() {
-  return ["# 在 NAS 上执行（容器内部）",
-    "docker exec -it 115-docker 115dl apis",
-    "docker exec -it 115-docker 115dl add 'magnet:?xt=urn:btih:...' --to-nas",
-    "docker exec -it 115-docker 115dl download --path '/电影/某文件夹'",
-    "",
-    "# 从本机访问（当前地址）",
-    "DOWNLOAD_API_URL=" + location.origin + " DOWNLOAD_API_PASSWORD=密码 \\",
-    "  115dl status",
-    "curl -u 用户:密码 " + location.origin + "/api/status"].join("\n");
+function apiCode(text) {
+  return h("pre", {class: "api-cli"}, h("code", {text}));
+}
+
+function endpointDetail(item) {
+  const params = item.params.map((param) => {
+    const schema = param.schema || {};
+    const type = schema.type || "string | array";
+    const constraint = {...schema};
+    delete constraint.type;
+    return h("tr", null,
+      h("td", null, h("code", {text: param.name})),
+      h("td", {text: param.in + " · " + (param.required ? "必填" : "可选")}),
+      h("td", null, h("code", {text: type}), h("p", {text: param.desc}),
+        h("code", {text: JSON.stringify(constraint)})));
+  });
+  const query = item.method === "GET" && item.params.length ?
+    "?" + new URLSearchParams(item.request_example).toString() : "";
+  const request = item.method + " " + base.replace(/\/$/, "") + item.path + query +
+    (item.method === "POST" ? "\nContent-Type: application/json\n\n" + JSON.stringify(item.request_example, null, 2) : "");
+  return h("details", {class: "api-detail"},
+    h("summary", null, h("code", {text: item.method + " " + item.path}), " · " + item.summary),
+    h("p", {class: "api-intro", text: item.notes}),
+    params.length ? h("div", {class: "api-scroll"}, h("table", {class: "api-table"},
+      h("thead", null, h("tr", null, ...["参数", "位置 / 必填", "类型、默认值与约束"].map((text) => h("th", {text})))),
+      h("tbody", null, ...params))) : h("p", {class: "api-intro", text: "无参数。"}),
+    h("h4", {text: "CLI 示例"}), apiCode(item.cli_example),
+    h("h4", {text: "HTTP 请求（认证头由客户端提供）"}), apiCode(request),
+    h("h4", {text: "200 返回示例 · 示意数据"}), apiCode(JSON.stringify(item.response_example, null, 2)),
+    h("dl", {class: "api-fields"}, ...Object.entries(item.response_fields).flatMap(([key, value]) =>
+      [h("dt", null, h("code", {text: key})), h("dd", {text: value})])));
 }
 
 async function loadEndpoints() {
   try {
     const data = await api("api/endpoints");
+    $("cli-examples").textContent = data.installation.replace("__DOWNLOAD_API_URL__", base.replace(/\/$/, "").replaceAll("'", "'\"'\"'"));
+    $("cli-resources").replaceChildren(...data.resources.map((item) =>
+      h("a", {href: base + item.path.slice(1), text: item.path + " · " + item.summary})));
+    $("api-conventions").textContent = data.auth + "。" + data.limits + "。";
+    $("api-errors").replaceChildren(...data.errors.map((error) =>
+      h("p", null, h("code", {text: error.status}), " · " + error.desc)));
     $("api-rows").replaceChildren(...data.endpoints.map((item) =>
       h("tr", null, h("td", {text: item.cmd}), h("td", {text: item.method}),
         h("td", null, h("code", {text: item.path})), h("td", {text: item.summary}))));
+    $("api-details").replaceChildren(...data.endpoints.map(endpointDetail));
   } catch (error) {
-    $("api-rows").replaceChildren(h("tr", null, h("td", {colspan: "4", text: error.message})));
+    $("cli-examples").textContent = "说明加载失败：" + error.message + "；重新打开可重试。";
+    $("api-rows").replaceChildren();
   }
 }
 
 function openCli() {
   $("cli-origin").textContent = location.origin;
-  $("cli-examples").textContent = cliExamples();
-  if (!$("api-rows").childElementCount) loadEndpoints();
+  loadEndpoints();
   const dialog = $("cli-dialog");
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute("open", "");

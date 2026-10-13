@@ -28,7 +28,7 @@ jobs:
           python3 -m unittest discover -s tests -v
           python3 -m compileall -q runtime scripts
           node --check runtime/downloader/static/app.js
-          node --test tests/test_download_progress.mjs
+          node --test tests/*.mjs
 
   image:
     needs: validate
