@@ -1,0 +1,5 @@
+# Merge with compose.yaml to deploy the image verified by GitHub Actions.
+services:
+  browser115:
+    image: ${IMAGE_115:-ghcr.io/devshuai/115-docker:latest}
+    pull_policy: always

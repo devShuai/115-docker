@@ -39,7 +39,7 @@ def main():
                 temporary.unlink(missing_ok=True)
         if not target.is_file() or checksum(target) != asset["sha256"]:
             raise SystemExit("Missing or invalid archive: " + asset["name"])
-    print(f"Verified {len(manifest["assets"])} pinned archives and packages")
+    print(f"Verified {len(manifest['assets'])} pinned archives and packages")
     expected = "".join(asset["sha256"] + "  " + asset["name"] + "\n"
                        for asset in manifest["assets"])
     if (ROOT / "vendor/SHA256SUMS").read_text() != expected:

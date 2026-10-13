@@ -1,0 +1,106 @@
+name: CI and GHCR
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Verify dependencies and source
+        run: |
+          python3 scripts/vendor.py
+          bash -n runtime/*.sh scripts/ci-smoke.sh
+          python3 -m unittest discover -s tests -v
+          python3 -m compileall -q runtime scripts
+          node --check runtime/downloader/static/app.js
+          node --test tests/test_download_progress.mjs
+
+  image:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set image identity
+        id: image
+        run: |
+          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "candidate=run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Build candidate locally
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ steps.image.outputs.name }}:${{ steps.image.outputs.candidate }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Verify both desktops, scaling, performance and login persistence
+        env:
+          CANDIDATE_IMAGE: ${{ steps.image.outputs.name }}:${{ steps.image.outputs.candidate }}
+        run: |
+          mkdir -p .ci-artifacts
+          docker run --rm --init --shm-size=1g --entrypoint /bin/bash \
+            -e CI_BACKENDS=legacy,kasm \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace" \
+            --workdir /workspace "$CANDIDATE_IMAGE" scripts/ci-smoke.sh
+      - name: Upload desktop diagnostics
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: desktop-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .ci-artifacts/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish verified image
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          CANDIDATE: ${{ steps.image.outputs.candidate }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker tag "$IMAGE:$CANDIDATE" "$IMAGE:sha-$GITHUB_SHA"
+          docker push "$IMAGE:$CANDIDATE"
+          docker push "$IMAGE:sha-$GITHUB_SHA"
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          if [ "$main_sha" = "$GITHUB_SHA" ]; then
+            docker tag "$IMAGE:$CANDIDATE" "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+            docker buildx imagetools inspect "$IMAGE:latest"
+            echo "Verified image: $IMAGE:latest (revision $GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Published verified sha-$GITHUB_SHA; main has advanced, latest unchanged." >> "$GITHUB_STEP_SUMMARY"
+          fi

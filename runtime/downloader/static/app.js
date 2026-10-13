@@ -179,7 +179,17 @@ function transferRow(node, item) {
 }
 
 async function refreshTransfers() {
-  transfers = await api("api/transfers");
+  try {
+    transfers = await api("api/transfers");
+  } catch (error) {
+    // A failed poll must not leave a stale 0% looking like current progress.
+    $("activity").hidden = false;
+    $("activity-text").textContent = "进度更新失败，正在重试";
+    $("activity-pct").textContent = "";
+    $("top-progress").hidden = true;
+    document.title = "进度更新中 · 115 下载";
+    throw error;
+  }
   sync($("nas"), transfers.items, (item) => item.id, transferRow, "还没有下载到 NAS 的任务");
   $("nas-note").hidden = tab !== "nas" || transfers.live || !transfers.items.length;
   $("count-nas").textContent = transfers.active || "";
@@ -190,6 +200,10 @@ async function refreshTransfers() {
     $("activity-text").textContent = transfers.active + " 个进行中" + (transfers.speed ? " · " + transfers.speed : "");
     $("activity-pct").textContent = transfers.progress === null ? "" : percent(transfers.progress);
     $("top-progress").firstChild.style.width = ((transfers.progress || 0) * 100).toFixed(2) + "%";
+  } else {
+    $("activity-text").textContent = "";
+    $("activity-pct").textContent = "";
+    $("top-progress").firstChild.style.width = "0%";
   }
   document.title = (busy && transfers.progress !== null ? percent(transfers.progress) + " · " : "") + "115 下载";
 }

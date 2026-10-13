@@ -77,6 +77,15 @@ docker compose -f compose.yaml -f compose.registry.yaml ps
 
 默认仅绑定 `127.0.0.1`。在宿主机访问桌面 `http://127.0.0.1:1150/` 和下载页面 `http://127.0.0.1:1151/`；远程访问见下文 SSH 隧道或 HTTPS 入口。后续操作始终携带相同的两个 `-f` 参数。
 
+使用 **GHCR 镜像**时，保持 `IMAGE_115` 未设置，改用工程内的 GHCR 覆盖文件：
+
+```bash
+docker compose -f compose.yaml -f compose.ghcr.yaml pull
+docker compose -f compose.yaml -f compose.ghcr.yaml up -d --no-build
+```
+
+也可显式设置 `IMAGE_115=ghcr.io/devshuai/115-docker:latest`。如果 GHCR 包为私有，需要先 `docker login ghcr.io`；公开包可匿名拉取。GHCR 与 Harbor 使用相同的端口、环境变量和数据卷。
+
 ### 方式二：Compose 在本地构建
 
 沿用上面的配置和数据目录准备步骤，保持 `IMAGE_115` 未设置，不使用 `compose.registry.yaml`：
@@ -184,6 +193,8 @@ HTTPS 桌面入口参考 [nginx/115-kasm.conf.example](nginx/115-kasm.conf.examp
 3. **115 分享链接**：支持提取码、子目录浏览和部分内容选择，也可下载整个文件夹。
 4. **任务与进度**：查看云下载、自动下载等待任务和 NAS 传输情况。实时速度来自浏览器传输列表，关闭该列表时显示历史记录。
 
+已完成任务的 API 进度固定为 100%；未提供运行进度时使用已接收字节与总大小估算，但不凭四舍五入的大小判断完成。进度查询失败会显示重试提示，恢复后自动刷新；任务全部结束后清除顶部百分比与进度条。
+
 下载保存到 `/opt/Downloads` 对应的宿主机目录。自动下载任务保存在 `115-downloads.json`，容器重建后继续跟踪。提交后的 10 分钟内每 10 秒查询一次，之后每分钟一次；已完成和失败记录保留 7 天。
 
 ### 115dl 命令行
@@ -284,6 +295,8 @@ python3 scripts/check-update.py --container 115-docker
 python3 scripts/check-update.py --container "$(docker compose -f compose.yaml -f compose.registry.yaml ps -q browser115)"
 # 群晖 SSH 使用 root 的 Docker 登录配置
 sudo /usr/bin/python3 scripts/check-update.py --docker /usr/local/bin/docker --container 115-docker --json
+# 检查 GHCR 镜像时显式指定仓库，避免查询默认 Harbor 地址
+python3 scripts/check-update.py --container 115-docker --image ghcr.io/devshuai/115-docker:latest
 ```
 
 脚本查询同平台的远端 config digest，与**运行中容器**的 image ID 比较，不下载镜像层。退出码 0 表示最新，10 表示有更新，1 表示检查失败；可处理 manifest index 和 BuildKit 证明附件。
@@ -328,6 +341,19 @@ docker compose -f compose.yaml -f compose.registry.yaml -f compose.legacy.yaml u
 
 GitHub：[devShuai/115-docker](https://github.com/devShuai/115-docker)。OneDev：`ssh://one.devshuai.com/shuai-toys/115-docker.git`。镜像仓库：`registry.devshuai.com/shuai-repo/115-docker`。
 
+### GitHub Actions 与 GHCR
+
+[CI and GHCR](https://github.com/devShuai/115-docker/actions/workflows/ci.yml) 由 `.github/workflows/ci.yml` 定义，支持 main 推送、PR 和手动运行：
+
+1. 验证固定归档、Python 测试、Shell/JavaScript 语法，以及下载进度从 0% 到完成、请求失败后恢复的回归测试。
+2. 构建 linux/amd64 镜像，在隔离容器中执行工程自带的双后端桌面、分辨率、性能与登录保持验收。
+3. 无论桌面验收是否成功，都尝试上传截图、性能报告和诊断日志，产物保留 14 天。
+4. main 验收成功后通过 `GITHUB_TOKEN` 发布 `ghcr.io/devshuai/115-docker:run-<run_id>-<attempt>` 和 `sha-<完整提交>`；该提交仍为 main 最新提交时才更新 `latest`。PR 不登录仓库或推送镜像。
+
+流水线使用固定提交的官方 Actions，发布作业声明 `packages: write`，无需复制 Harbor 密码到 GitHub。首次发布后可在 GitHub Packages 管理镜像访问权限；公开仓库不代表新建包一定公开，匿名拉取需将包设为 Public。OneDev 与 GitHub 各自执行验收、发布到各自仓库，不互相依赖。
+
+### OneDev 与 Harbor
+
 `.onedev-buildspec.yml` 包含两个作业：
 
 - **validate**：分支与 PR 更新触发，检查固定归档、Shell 语法、Python 代码和运行配置测试。
@@ -345,6 +371,7 @@ GitHub：[devShuai/115-docker](https://github.com/devShuai/115-docker)。OneDev�
 Dockerfile / compose*.yaml      构建与部署
 .env.example                  Compose 配置模板
 .onedev-buildspec.yml          OneDev 验证与镜像发布
+.github/workflows/ci.yml       GitHub Actions 验证与 GHCR 发布
 runtime/                      入口、进程管理、浏览器配置与健康检查
   downloader/                 下载页面、JSON API、CDP、登录保持、115dl
   web/ kasmvnc/ novnc/         中文客户端、DPI 适配、原后端配置
@@ -362,6 +389,7 @@ THIRD_PARTY.md                 第三方组件来源与许可
 python3 scripts/vendor.py
 python3 -m unittest discover -s tests -v
 bash -n runtime/*.sh scripts/ci-smoke.sh
+node --test tests/test_download_progress.mjs
 ```
 
 启动管理测试需要 Bash 4.3+，macOS 系统旧 Bash 会跳过相应测试，完整桌面验收在 Linux 镜像中执行。软件升级需更新固定归档、manifest、SHA256SUMS 与引用版本。[第三方来源与许可](THIRD_PARTY.md)

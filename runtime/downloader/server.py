@@ -112,11 +112,13 @@ def _tidy(text, suffix=""):
 
 def offline_view(task, auto=None):
     status = _number(task.get("status"))
+    state = DISPLAY_KEYS.get(task.get("display_status")) or OFFLINE_KEYS.get(status, "waiting")
     view = {"hash": task.get("info_hash"), "name": task.get("name") or task.get("url") or "",
             "status": OFFLINE_STATES.get(status, str(status)),
-            "state": DISPLAY_KEYS.get(task.get("display_status")) or OFFLINE_KEYS.get(status, "waiting"),
+            "state": state,
             "text": task.get("status_text") or OFFLINE_STATES.get(status, ""),
-            "percent": _number(task.get("percentDone"), float), "size": _number(task.get("size")),
+            "percent": 100.0 if state == "done" else min(100.0, max(0.0, _number(task.get("percentDone"), float))),
+            "size": _number(task.get("size")),
             "speed": _number(task.get("rateDownload")), "left": _number(task.get("left_time")),
             "added": task.get("add_time"), "folder": str(task.get("file_category")) == "0",
             "ready": status == 2 and bool(task.get("pick_code")) and str(task.get("move", 1)) not in ("0", "-1")}
@@ -135,8 +137,20 @@ def transfer_view(item):
         # Downloaded; the browser is checking the file against 115's hash.
         state = "verifying"
     received, total = item.get("received") or "", item.get("total") or ""
+    # The native list can retain zero/missing progress even after its status
+    # changes. Completion is authoritative; byte counts can fill a missing
+    # running percentage, but rounded display sizes never prove completion.
+    progress = min(1.0, max(0.0, _number(item.get("progress"), float)))
+    if state == "done":
+        progress = 1.0
+    elif progress == 0 and state in ("downloading", "verifying", "paused"):
+        received_bytes, total_bytes = amount(received), amount(total)
+        if received_bytes and total_bytes and total_bytes > 0:
+            progress = min(1.0, received_bytes / total_bytes)
+    if state == "verifying" and not item.get("folder"):
+        progress = 1.0  # File download finished; verification is a separate stage.
     return {"id": str(item.get("id")), "name": item.get("name") or "", "state": state,
-            "progress": min(1.0, max(0.0, _number(item.get("progress"), float))),
+            "progress": progress,
             "verify": min(1.0, hashed) if state == "verifying" else None,
             "speed": _tidy(item.get("speed"), "/s") if state == "downloading" else "",
             "remain": _number(item.get("remain")) if state == "downloading" else 0,

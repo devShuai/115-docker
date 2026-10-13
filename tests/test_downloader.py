@@ -639,6 +639,26 @@ class ServerTests(unittest.TestCase):
 
 
 class ViewTests(unittest.TestCase):
+    def test_completed_tasks_do_not_keep_zero_or_missing_progress(self):
+        for progress in (0, None, 0.5):
+            done = server.transfer_view({"id": 1, "status": 2, "progress": progress})
+            self.assertEqual((done["state"], done["progress"]), ("done", 1))
+            summary = server.transfers_view([done], True)
+            self.assertEqual((summary["active"], summary["progress"]), (0, None))
+        for task in ({"status": 2, "percentDone": 0}, {"status": 1, "display_status": "finished"}):
+            self.assertEqual(server.offline_view(task)["percent"], 100)
+
+    def test_running_progress_falls_back_to_bytes_without_claiming_completion(self):
+        item = {"id": 1, "status": 0, "progress": 0, "received": "512MB", "total": "1GB"}
+        self.assertEqual(server.transfer_view(item)["progress"], 0.5)
+        same_size = server.transfer_view(dict(item, received="1GB"))
+        self.assertEqual((same_size["state"], same_size["progress"]), ("downloading", 1))
+        self.assertEqual(server.transfer_view(dict(item, total="unknown"))["progress"], 0)
+        self.assertEqual(server.transfer_view(dict(item, progress=0.6))["progress"], 0.6)
+        verifying = server.transfer_view(dict(item, hash=0.25))
+        self.assertEqual((verifying["state"], verifying["progress"], verifying["verify"]), ("verifying", 1, 0.25))
+        self.assertEqual(server.transfer_view(dict(item, status=3))["progress"], 0)
+
     def test_amounts(self):
         self.assertEqual(server.amount("1.5MB/s"), 1.5 * 1024 ** 2)
         self.assertEqual(server.amount("812.00KB"), 812 * 1024)
