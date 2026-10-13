@@ -26,9 +26,9 @@ MAX_FILE = 1024 * 1024
 MAX_TOTAL = 2 * MAX_FILE
 
 
-def read_url(url, limit):
+def read_url(url, limit, accept='application/vnd.github+json'):
     request = urllib.request.Request(url, headers={'User-Agent': '115-download-skill-installer',
-                                                 'Accept': 'application/vnd.github+json'})
+                                                 'Accept': accept})
     with urllib.request.urlopen(request, timeout=30) as response:
         data = response.read(limit + 1)
     if len(data) > limit:
@@ -39,7 +39,7 @@ def read_url(url, limit):
 def github_source(ref):
     # Resolve once and use the immutable commit for every file, even if main changes during installation.
     url = 'https://api.github.com/repos/' + REPOSITORY + '/commits/' + urllib.parse.quote(ref, safe='')
-    resolved = json.loads(read_url(url, 64 * 1024))['sha']
+    resolved = read_url(url, 128, 'application/vnd.github.sha').decode('ascii').strip()
     if not isinstance(resolved, str) or not re.fullmatch(r'[a-f0-9]{40}', resolved):
         raise ValueError('GitHub returned an invalid commit')
     base = 'https://raw.githubusercontent.com/' + REPOSITORY + '/' + resolved + '/skills/' + NAME + '/'

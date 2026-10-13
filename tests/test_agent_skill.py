@@ -109,10 +109,11 @@ class SkillTests(unittest.TestCase):
     def test_github_downloads_use_one_pinned_commit_for_all_files(self):
         sha = 'a' * 40
         requested = []
-        def fake_get(url, limit):
+        def fake_get(url, limit, accept=None):
             requested.append(url)
             if url.startswith('https://api.github.com/'):
-                return json.dumps({'sha': sha}).encode()
+                self.assertEqual(accept, 'application/vnd.github.sha')
+                return (sha + '\n').encode()
             base = 'https://raw.githubusercontent.com/devShuai/115-docker/' + sha + '/skills/115-download/'
             self.assertTrue(url.startswith(base), url)
             return self.payload[url[len(base):]]
