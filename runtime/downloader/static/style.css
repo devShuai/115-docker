@@ -245,48 +245,92 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
 .cli-btn:hover { background: var(--hover); color: var(--text); }
 .cli-btn svg { width: 15px; height: 15px; }
 .cli-dialog {
-  width: min(960px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0;
+  width: min(760px, calc(100vw - 24px)); height: min(640px, calc(100vh - 48px)); padding: 0;
   border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text);
   box-shadow: 0 16px 48px rgba(0, 0, 0, .28);
 }
+/* Fixed height keeps the dialog still while switching tabs; only the body scrolls. */
+.cli-dialog[open] { display: flex; flex-direction: column; }
 .cli-dialog::backdrop { background: rgba(0, 0, 0, .4); }
 .cli-head {
-  position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); font-size: 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 10px 10px 16px; font-size: 14px;
 }
-.cli-body { padding: 16px; overflow-y: auto; }
-.cli-body h3 { margin: 20px 0 10px; font-size: 15px; }
-.cli-body h3:first-child { margin-top: 14px; }
-.cli-body h4 { margin: 12px 0 6px; font-size: 13px; }
-.api-resources { display: flex; flex-direction: column; gap: 8px; font-size: 13px; overflow-wrap: anywhere; }
-.api-resources a { color: var(--accent); }
-.api-errors { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px 16px; }
-.api-errors p { margin: 0; font-size: 12px; color: var(--text-2); }
-.api-detail { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; }
-.api-detail summary { cursor: pointer; font-size: 13px; overflow-wrap: anywhere; }
-.api-detail[open] summary { margin-bottom: 12px; }
-.api-scroll { overflow-x: auto; }
-.api-detail .api-table { min-width: 520px; }
-.api-detail .api-table p { margin: 4px 0; }
-.api-detail code { overflow-wrap: anywhere; }
-.api-fields { font-size: 12px; line-height: 1.6; }
-.api-fields dt { margin-top: 8px; font-weight: 600; overflow-wrap: anywhere; }
-.api-fields dd { margin: 2px 0; color: var(--text-2); }
-.api-intro { margin: 0 0 10px; font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }
+.cli-origin { display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 13px; color: var(--text-2); }
+.cli-origin code {
+  min-width: 0; padding: 2px 8px; overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: 4px;
+  background: var(--head); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--text);
+}
+.cli-tabs { margin-top: 8px; }
+.cli-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px 16px; }
+.cli-foot {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 10px 16px;
+  border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3);
+}
+.cli-foot nav { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.cli-foot a { color: var(--accent); text-decoration: none; }
+.cli-foot a:hover { text-decoration: underline; }
+
+.api-intro { margin: 0 0 8px; font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }
 .api-intro code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--accent); }
 .api-cli {
   margin: 0 0 14px; padding: 10px 12px; overflow-x: auto; border-radius: 6px;
   background: var(--head); border: 1px solid var(--line); font-size: 12px; line-height: 1.6;
 }
 .api-cli code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--text); white-space: pre; }
-.api-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.api-table th {
-  padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 500; color: var(--text-2);
+.snippet { position: relative; }
+.snippet .api-cli { padding-right: 64px; }
+.snippet .copy { position: absolute; top: 7px; right: 7px; }
+.copy {
+  flex: none; height: 24px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 4px;
+  background: var(--panel); font-size: 12px; color: var(--text-2);
 }
-.api-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-.api-table tr:last-child td { border-bottom: 0; }
-.api-table code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--accent); }
-.api-table td:first-child { font-weight: 500; white-space: nowrap; }
+.copy:hover { background: var(--hover); color: var(--text); }
+/* Feedback swaps the label without touching the text that gets copied. */
+.copy.copied, .copy.copy-failed { font-size: 0; }
+.copy.copied::after { content: "已复制"; font-size: 12px; color: var(--ok); }
+.copy.copy-failed::after { content: "请手动复制"; font-size: 12px; color: var(--warn); }
+
+.cmd-list { display: grid; grid-template-columns: max-content 1fr; align-items: center; gap: 0 16px; margin: 0 0 14px; }
+.cmd-list dt, .cmd-list dd { margin: 0; padding: 3px 0; border-bottom: 1px solid var(--line); }
+.cmd-list dd { font-size: 13px; color: var(--text-2); }
+.cmd-list code {
+  display: inline-block; padding: 2px 6px; border-radius: 4px; cursor: pointer;
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--text);
+}
+.cmd-list code:hover { background: var(--hover); color: var(--accent); }
+.cmd-list code.copied::after { content: "已复制"; margin-left: 8px; font-size: 11px; color: var(--ok); }
+.cmd-list code.copy-failed::after { content: "请手动复制"; margin-left: 8px; font-size: 11px; color: var(--warn); }
+
+.api-more { margin-top: 14px; }
+.api-more > summary { cursor: pointer; font-size: 13px; color: var(--text-2); }
+.api-more > summary:hover { color: var(--text); }
+.api-more[open] > summary { margin-bottom: 10px; }
+.api-errors { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 16px; }
+.api-errors p { margin: 0; font-size: 12px; color: var(--text-2); }
+.api-errors code { margin-right: 6px; font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--text); }
+
+.ep-list { border-top: 1px solid var(--line); }
+.ep { border-bottom: 1px solid var(--line); }
+.ep > summary { display: flex; align-items: baseline; gap: 10px; padding: 9px 2px; cursor: pointer; list-style: none; }
+.ep > summary::-webkit-details-marker { display: none; }
+.ep > summary:hover code { color: var(--accent); }
+.ep-m { flex: none; width: 36px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; font-weight: 600; color: var(--accent); }
+.ep > summary code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--text); }
+.ep-s { margin-left: auto; padding-left: 12px; font-size: 13px; color: var(--text-2); text-align: right; }
+.ep > summary::after {
+  content: "›"; flex: none; width: 12px; color: var(--text-3); text-align: center; transition: transform .15s;
+}
+.ep[open] > summary::after { transform: rotate(90deg); }
+.ep-body { padding: 0 2px 12px 46px; }
+.ep-params { margin: 0 0 10px; padding: 0; list-style: none; font-size: 12px; color: var(--text-2); }
+.ep-params li { padding: 2px 0; }
+.ep-params code { margin-right: 6px; font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--text); }
+.req { margin-right: 6px; font-size: 11px; color: var(--warn); }
+.api-fields { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0; font-size: 12px; }
+.api-fields dt { margin: 0; overflow-wrap: anywhere; }
+.api-fields dt code { font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--text); }
+.api-fields dd { margin: 0; color: var(--text-2); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -296,6 +340,20 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
   .cli-label { display: none; }
   .cli-btn { padding: 0 9px; }
   .top-right { gap: 10px; }
+  .cli-dialog { height: calc(100vh - 32px); }
+  /* Code scrolls sideways on phones, so the copy button sits below it instead of over it. */
+  .snippet { display: flex; flex-direction: column; }
+  .snippet .api-cli { margin-bottom: 6px; padding-right: 12px; }
+  .snippet .copy { position: static; align-self: flex-end; margin-bottom: 12px; }
+  .cmd-list { grid-template-columns: 1fr; }
+  .cmd-list dt { border-bottom: 0; padding-bottom: 0; }
+  .cmd-list dd { padding: 0 0 6px 6px; }
+  .ep > summary { position: relative; flex-wrap: wrap; row-gap: 2px; padding-right: 18px; }
+  .ep > summary::after { position: absolute; top: 9px; right: 2px; }
+  .ep-s { flex-basis: 100%; margin-left: 46px; padding-left: 0; text-align: left; }
+  .ep-body { padding-left: 0; }
+  .api-fields { grid-template-columns: 1fr; }
+  .api-fields dd { padding-bottom: 4px; }
 }
 
 @media (max-width: 640px) {

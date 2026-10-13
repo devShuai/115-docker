@@ -35,13 +35,14 @@ function setup() {
 function textOf(node) {
   return typeof node === 'string' ? node : node.textContent + node.children.map(textOf).join('\n');
 }
-test('page renders every endpoint, request schema, response fields and authenticated install resources', async () => {
+test('page renders every endpoint, its parameters, response fields and authenticated install resources', async () => {
   const {context, elements} = setup();
   await vm.runInContext('loadEndpoints()', context);
   assert.equal(elements.get('api-details').children.length, docs.endpoints.length);
   for (const [index, item] of docs.endpoints.entries()) {
     const text = textOf(elements.get('api-details').children[index]);
-    assert.ok(text.includes(item.method + ' ' + item.path));
+    assert.ok(text.includes(item.method) && text.includes(item.path), item.path);
+    assert.ok(text.includes(item.cli_example), item.path);
     assert.ok(text.includes(item.notes));
     for (const param of item.params) assert.ok(text.includes(param.name));
     for (const field of Object.keys(item.response_fields)) assert.ok(text.includes(field));
@@ -50,6 +51,17 @@ test('page renders every endpoint, request schema, response fields and authentic
   assert.ok(elements.get('cli-examples').textContent.includes('--no-input --json status'));
   assert.ok(elements.get('skill-install').textContent.includes('skill-installer.py | python3 -'));
   assert.equal(elements.get('cli-resources').children[0].attributes.href, 'https://downloads.example.test/115dl.py');
+});
+test('quick start downloads the client from the address the page was opened at', () => {
+  const {context, elements} = setup();
+  vm.runInContext(extract('renderQuickStart'), context);
+  vm.runInContext('renderQuickStart()', context);
+  const quick = elements.get('cli-quick').textContent;
+  assert.ok(quick.includes("'https://downloads.example.test/115dl.py' -o 115dl"));
+  assert.ok(quick.includes("export DOWNLOAD_API_URL='https://downloads.example.test'"));
+  const commands = elements.get('cli-commands').children;
+  assert.equal(commands.length, 12, 'six commands, each a dt and a dd');
+  assert.ok(commands.every((node) => node.tag === 'dt' || node.tag === 'dd'));
 });
 test('documentation renders literal values without executing HTML and recovers after a request failure', async () => {
   const {context, elements} = setup();

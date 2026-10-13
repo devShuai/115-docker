@@ -814,33 +814,20 @@ function apiCode(text) {
   return h("pre", {class: "api-cli"}, h("code", {text}));
 }
 
+// One row per endpoint; the summary line is the overview, details open on demand.
+// Full request/response examples live in /agent.md and /openapi.json.
 function endpointDetail(item) {
-  const params = item.params.map((param) => {
-    const schema = param.schema || {};
-    const type = schema.type || "string | array";
-    const constraint = {...schema};
-    delete constraint.type;
-    return h("tr", null,
-      h("td", null, h("code", {text: param.name})),
-      h("td", {text: param.in + " · " + (param.required ? "必填" : "可选")}),
-      h("td", null, h("code", {text: type}), h("p", {text: param.desc}),
-        h("code", {text: JSON.stringify(constraint)})));
-  });
-  const query = item.method === "GET" && item.params.length ?
-    "?" + new URLSearchParams(item.request_example).toString() : "";
-  const request = item.method + " " + base.replace(/\/$/, "") + item.path + query +
-    (item.method === "POST" ? "\nContent-Type: application/json\n\n" + JSON.stringify(item.request_example, null, 2) : "");
-  return h("details", {class: "api-detail"},
-    h("summary", null, h("code", {text: item.method + " " + item.path}), " · " + item.summary),
-    h("p", {class: "api-intro", text: item.notes}),
-    params.length ? h("div", {class: "api-scroll"}, h("table", {class: "api-table"},
-      h("thead", null, h("tr", null, ...["参数", "位置 / 必填", "类型、默认值与约束"].map((text) => h("th", {text})))),
-      h("tbody", null, ...params))) : h("p", {class: "api-intro", text: "无参数。"}),
-    h("h4", {text: "CLI 示例"}), apiCode(item.cli_example),
-    h("h4", {text: "HTTP 请求（认证头由客户端提供）"}), apiCode(request),
-    h("h4", {text: "200 返回示例 · 示意数据"}), apiCode(JSON.stringify(item.response_example, null, 2)),
-    h("dl", {class: "api-fields"}, ...Object.entries(item.response_fields).flatMap(([key, value]) =>
-      [h("dt", null, h("code", {text: key})), h("dd", {text: value})])));
+  const params = item.params.map((param) => h("li", null, h("code", {text: param.name}),
+    param.required ? h("span", {class: "req", text: "必填"}) : null, param.desc));
+  return h("details", {class: "ep"},
+    h("summary", null, h("span", {class: "ep-m", text: item.method}), h("code", {text: item.path}),
+      h("span", {class: "ep-s", text: item.summary})),
+    h("div", {class: "ep-body"},
+      h("p", {class: "api-intro", text: item.notes}),
+      params.length ? h("ul", {class: "ep-params"}, ...params) : null,
+      apiCode(item.cli_example),
+      h("dl", {class: "api-fields"}, ...Object.entries(item.response_fields).flatMap(([key, value]) =>
+        [h("dt", null, h("code", {text: key})), h("dd", {text: value})]))));
 }
 
 async function loadEndpoints() {
@@ -849,31 +836,99 @@ async function loadEndpoints() {
     $("skill-install").textContent = data.skill_installation;
     $("cli-examples").textContent = data.installation.replace("__DOWNLOAD_API_URL__", base.replace(/\/$/, "").replaceAll("'", "'\"'\"'"));
     $("cli-resources").replaceChildren(...data.resources.map((item) =>
-      h("a", {href: base + item.path.slice(1), text: item.path + " · " + item.summary})));
+      h("a", {href: base + item.path.slice(1), title: item.summary, text: item.path.slice(1)})));
     $("api-conventions").textContent = data.auth + "。" + data.limits + "。";
     $("api-errors").replaceChildren(...data.errors.map((error) =>
-      h("p", null, h("code", {text: error.status}), " · " + error.desc)));
-    $("api-rows").replaceChildren(...data.endpoints.map((item) =>
-      h("tr", null, h("td", {text: item.cmd}), h("td", {text: item.method}),
-        h("td", null, h("code", {text: item.path})), h("td", {text: item.summary}))));
+      h("p", null, h("code", {text: error.status}), " " + error.desc)));
     $("api-details").replaceChildren(...data.endpoints.map(endpointDetail));
+    return true;
   } catch (error) {
     $("cli-examples").textContent = "说明加载失败：" + error.message + "；重新打开可重试。";
-    $("api-rows").replaceChildren();
+    $("api-details").replaceChildren();
+    return false;
   }
 }
 
-function openCli() {
-  $("cli-origin").textContent = location.origin;
-  loadEndpoints();
+// Built from the page's own address: the mapped host port or the reverse-proxy URL.
+function renderQuickStart() {
+  const quote = (text) => "'" + text.replaceAll("'", "'\"'\"'") + "'";
+  const origin = base.replace(/\/$/, "");
+  $("cli-quick").textContent = [
+    "# 用户名不是 115 时，把 -u 后面的 115 改掉",
+    "curl -fu 115 " + quote(origin + "/115dl.py") + " -o 115dl && chmod +x 115dl",
+    "export DOWNLOAD_API_URL=" + quote(origin),
+    "./115dl status"].join("\n");
+  const commands = [
+    ["./115dl status", "登录状态"],
+    ["./115dl add '磁力或 ed2k 链接' --to-nas", "云下载，完成后自动下到 NAS"],
+    ["./115dl browse --cid 0", "浏览网盘根目录"],
+    ["./115dl download --path '/电影/某文件夹'", "把网盘文件或文件夹下到 NAS"],
+    ["./115dl transfers", "NAS 下载进度"],
+    ["./115dl apis", "列出全部命令"]];
+  $("cli-commands").replaceChildren(...commands.flatMap(([command, summary]) =>
+    [h("dt", null, h("code", {text: command})), h("dd", {text: summary})]));
+}
+
+function selectCliPane(id) {
+  for (const tab of document.querySelectorAll(".cli-tabs .tab")) {
+    const selected = tab.getAttribute("aria-controls") === id;
+    tab.setAttribute("aria-selected", String(selected));
+    $(tab.getAttribute("aria-controls")).hidden = !selected;
+  }
+}
+
+// The page may be served over plain HTTP, where navigator.clipboard is missing.
+async function copyText(text, target) {
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    copied = true;
+  } catch (error) {
+    const area = h("textarea", {class: "sr", readonly: true});
+    area.value = text;
+    // Outside an open modal dialog the page is inert, so the helper must live inside it.
+    (target.closest("dialog") || document.body).append(area);
+    area.select();
+    try {
+      copied = document.execCommand("copy");
+    } catch (fallback) {
+      copied = false;
+    }
+    area.remove();
+  }
+  target.classList.add(copied ? "copied" : "copy-failed");
+  setTimeout(() => target.classList.remove("copied", "copy-failed"), 1500);
+}
+
+let endpointsLoaded = false;
+async function openCli() {
+  $("cli-origin").textContent = base.replace(/\/$/, "");
+  renderQuickStart();
   const dialog = $("cli-dialog");
   if (dialog.showModal) dialog.showModal();
   else dialog.setAttribute("open", "");
+  if (!endpointsLoaded) endpointsLoaded = await loadEndpoints();
 }
 $("cli-open").addEventListener("click", openCli);
 $("cli-close").addEventListener("click", () => $("cli-dialog").close());
 $("cli-dialog").addEventListener("click", (event) => {
-  if (event.target === $("cli-dialog")) $("cli-dialog").close();  // Click on the backdrop.
+  if (event.target === $("cli-dialog")) {
+    $("cli-dialog").close();  // Click on the backdrop.
+    return;
+  }
+  const tab = event.target.closest(".cli-tabs .tab");
+  if (tab) {
+    selectCliPane(tab.getAttribute("aria-controls"));
+    return;
+  }
+  const button = event.target.closest(".copy");
+  if (button) {
+    const source = button.dataset.copy ? $(button.dataset.copy) : button.parentElement.querySelector("code");
+    copyText(source.textContent, button);
+    return;
+  }
+  const command = event.target.closest(".cmd-list code");
+  if (command) copyText(command.textContent, command);
 });
 
 const kickStatus = every(refreshStatus, () => 15000);
