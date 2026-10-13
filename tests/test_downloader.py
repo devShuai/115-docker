@@ -148,17 +148,19 @@ class HistoryTests(unittest.TestCase):
             database = Path(directory) / "Default/HistoryEx"
             database.parent.mkdir()
             connection = sqlite3.connect(database)
-            connection.execute("CREATE TABLE downloads (id INTEGER PRIMARY KEY, target_path TEXT, received_bytes INT, total_bytes INT, "
-                               "state INT, start_time INT, end_time INT)")
+            connection.execute("CREATE TABLE downloads (id INTEGER PRIMARY KEY, target_path TEXT, current_path TEXT, "
+                               "received_bytes INT, total_bytes INT, state INT, start_time INT, end_time INT)")
             start = (1_700_000_000 + 11644473600) * 1_000_000
-            connection.executemany("INSERT INTO downloads (target_path,received_bytes,total_bytes,state,start_time,end_time) VALUES (?,?,?,?,?,?)", [
-                ("/opt/Downloads/old.iso", 5, 5, 1, start, start + 1_000_000),
-                ("/opt/Downloads/new.mkv", 2, 10, 0, start + 60_000_000, 0)])
+            connection.executemany("INSERT INTO downloads (target_path,current_path,received_bytes,total_bytes,state,start_time,end_time) "
+                                   "VALUES (?,?,?,?,?,?,?)", [
+                ("/opt/Downloads/old.iso", "/opt/Downloads/old.iso", 5, 5, 1, start, start + 1_000_000),
+                ("/opt/Downloads/new.mkv", "/opt/Downloads/new.mkv.crdownload", 2, 10, 0, start + 60_000_000, 0)])
             connection.commit()
             connection.close()
             rows = history.recent_downloads(directory)
         self.assertEqual([row["name"] for row in rows], ["new.mkv", "old.iso"])
         self.assertEqual((rows[0]["state"], rows[0]["received"], rows[0]["total"]), ("下载中", 2, 10))
+        self.assertEqual(rows[0]["current_path"], "/opt/Downloads/new.mkv.crdownload")
         self.assertEqual((rows[1]["started"], rows[1]["finished"]), (1_700_000_000, 1_700_000_001))
         self.assertEqual(history.recent_downloads("/nonexistent"), [])
 
@@ -672,6 +674,25 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(status, code, error)
             self.assertTrue(data["error"])
 
+    def test_history_mode_reports_progress_from_the_partial_file(self):
+        partial = Path(self.temporary.name) / "movie.mkv.crdownload"
+        partial.write_bytes(b"x" * 4000)
+        database = Path(self.temporary.name) / "Default/HistoryEx"
+        database.parent.mkdir()
+        connection = sqlite3.connect(database)
+        connection.execute("CREATE TABLE downloads (id INTEGER PRIMARY KEY, target_path TEXT, current_path TEXT, "
+                           "received_bytes INT, total_bytes INT, state INT, start_time INT, end_time INT)")
+        connection.execute("INSERT INTO downloads VALUES (3, ?, ?, 0, 10000, 0, ?, 0)",
+                           (str(Path(self.temporary.name) / "movie.mkv"), str(partial),
+                            (1_700_000_000 + 11644473600) * 1_000_000))
+        connection.commit()
+        connection.close()
+        self.cloud.error = client.BrowserUnavailable("传输列表没有打开")
+        data = json.loads(self.request("GET", "/api/transfers")[2])
+        self.assertEqual((data["live"], data["active"]), (False, 1))
+        self.assertEqual((data["items"][0]["id"], data["items"][0]["state"], data["items"][0]["progress"]),
+                         ("h3", "downloading", 0.4))
+
     def test_transfers_are_live_or_fall_back_to_history(self):
         self.cloud.live = [
             {"id": "7", "name": "a.mkv", "status": 0, "progress": 0.5, "speed": "2.00MB/s", "remain": 30,
@@ -691,6 +712,45 @@ class ServerTests(unittest.TestCase):
 
 
 class ViewTests(unittest.TestCase):
+    def test_partial_file_size_is_the_running_progress(self):
+        with tempfile.TemporaryDirectory() as directory:
+            partial = Path(directory) / "a.mkv.crdownload"
+            partial.write_bytes(b"x" * 300)
+            row = {"id": 9, "name": "a.mkv", "current_path": str(partial), "received": 0, "total": 1000,
+                   "key": "downloading", "finished": None}
+            self.assertEqual(server.disk_bytes(row), 300)
+            item = server.history_transfer(row, 0, server.disk_bytes(row), 100.0)
+            self.assertEqual((item["id"], item["progress"], item["speed"], item["remain"]), ("h9", 0.3, "100 B/s", 7))
+            partial.write_bytes(b"x" * 1000)  # Grown to its final size up front: no progress evidence.
+            self.assertIsNone(server.disk_bytes(row))
+            self.assertIsNone(server.disk_bytes(dict(row, key="done")))
+            self.assertIsNone(server.disk_bytes(dict(row, current_path=str(Path(directory) / "missing"))))
+
+    def test_a_frozen_transfer_page_takes_progress_from_the_partial_file(self):
+        live = {"id": 5, "name": "a.mkv", "status": 0, "progress": 0, "speed": "", "received": "", "total": ""}
+        running = {"id": 5, "name": "a.mkv", "received": 0, "total": 2048, "key": "downloading"}
+        item = server.live_transfers([live], [running], {"5": (1024, 512.0)})[0]
+        self.assertEqual((item["state"], item["progress"], item["received"], item["total"]),
+                         ("downloading", 0.5, "1.0 KB", "2.0 KB"))
+        self.assertEqual((item["speed"], item["remain"]), ("512 B/s", 2))
+        other = server.live_transfers([dict(live, id=6)], [running], {"5": (1024, 512.0)})[0]
+        self.assertEqual(other["progress"], 0, "another task's file never moves this one")
+
+    def test_speed_comes_from_successive_polls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            partial = Path(directory) / "a.crdownload"
+            partial.write_bytes(b"x" * 100)
+            now = [10.0]
+            app = server.App(None, None, "115", "x", directory, clock=lambda: now[0])
+            row = {"id": 1, "name": "a", "current_path": str(partial), "received": 0, "total": 10_000,
+                   "key": "downloading"}
+            self.assertEqual(app._measure([row]), {"1": (100, 0.0)})
+            partial.write_bytes(b"x" * 300)
+            now[0] = 12.0
+            self.assertEqual(app._measure([row]), {"1": (300, 100.0)})
+            self.assertEqual(app._measure([]), {})
+            self.assertEqual(app.samples, {}, "finished downloads drop their samples")
+
     def test_completed_history_corrects_stale_native_state_without_matching_other_tasks(self):
         row = {"id": 5, "name": "test.bin", "received": 1024, "total": 1024,
                "key": "done", "finished": 1700000000}

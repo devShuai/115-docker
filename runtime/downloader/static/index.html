@@ -94,12 +94,16 @@
 
     <section class="panel queue">
       <div class="tabs" role="tablist">
-        <button id="tab-nas" class="tab" type="button" role="tab" aria-selected="true" aria-controls="nas">NAS 下载<span id="count-nas" class="count"></span></button>
+        <button id="tab-nas" class="tab" type="button" role="tab" aria-selected="true" aria-controls="nas">下载中<span id="count-nas" class="count"></span></button>
+        <button id="tab-recent" class="tab" type="button" role="tab" aria-selected="false" aria-controls="recent">最近下载</button>
         <button id="tab-cloud" class="tab" type="button" role="tab" aria-selected="false" aria-controls="cloud">云下载<span id="count-cloud" class="count"></span></button>
+        <button id="tab-cloud-done" class="tab" type="button" role="tab" aria-selected="false" aria-controls="cloud-done">云下载完成</button>
       </div>
       <ul id="nas" class="tasks" role="tabpanel" aria-labelledby="tab-nas"></ul>
-      <p id="nas-note" class="note" hidden>115 浏览器的传输列表没有打开，这里显示的是下载记录，没有实时速度。</p>
+      <p id="nas-note" class="note" hidden>115 浏览器的传输列表没有打开，进度按磁盘上已写入的数据估算。</p>
+      <ul id="recent" class="tasks" role="tabpanel" aria-labelledby="tab-recent" hidden></ul>
       <ul id="cloud" class="tasks" role="tabpanel" aria-labelledby="tab-cloud" hidden></ul>
+      <ul id="cloud-done" class="tasks" role="tabpanel" aria-labelledby="tab-cloud-done" hidden></ul>
     </section>
 
   </main>

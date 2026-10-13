@@ -516,7 +516,7 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json share 'https://11
 
 ## GET /api/transfers — NAS 实时传输进度
 
-progress 为 0–1，完成恒为 1；verifying 表示文件下载后校验中，不能按 progress=1 判定最终完成。live=false 为历史降级，无实时速度。最多 50 项。
+progress 为 0–1，完成恒为 1；verifying 表示文件下载后校验中，不能按 progress=1 判定最终完成。live=false 表示 115 浏览器的传输列表页未打开，数据来自下载历史，进度和速度按磁盘上已写入的数据估算。最多 50 项。
 
 CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json transfers`
 

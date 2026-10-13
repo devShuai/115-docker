@@ -127,20 +127,50 @@ def transfer_view(item):
             "folder": bool(item.get("folder")), "error": item.get("error") or "", "ended": item.get("ended") or ""}
 
 
-def history_transfer(row, index):
+def disk_bytes(row):
+    """Bytes written so far by a running download, read from its partial file.
+
+    The browser leaves received_bytes in its history at the starting value until the
+    download changes state, so this is the only live figure when the transfer list
+    page is closed. Returns None when it cannot tell.
+    """
+    path, total = row.get("current_path") or "", row.get("total") or 0
+    if row.get("key") != "downloading" or not path:
+        return None
+    try:
+        info = os.stat(path)
+    except OSError:
+        return None
+    written = info.st_size
+    allocated = getattr(info, "st_blocks", 0) * 512
+    if allocated and allocated < written:
+        written = allocated  # Sparse file grown to full size up front: count written blocks.
+    if total > 0 and written >= total:
+        return None  # Preallocated to its final size; the length says nothing about progress.
+    return written
+
+
+def history_transfer(row, index, written=None, speed=0.0):
     """A download history row, used while the browser's transfer list page is closed."""
     received, total, state = row["received"] or 0, row["total"] or 0, row.get("key") or "failed"
+    if state == "downloading" and written is not None:
+        received = max(received, written)
     ended = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(row["finished"])) if row.get("finished") else ""
-    return {"id": f"h{index}", "name": row["name"], "state": state,
+    running = state == "downloading" and speed > 0
+    return {"id": f"h{row['id']}" if row.get("id") is not None else f"h{index}", "name": row["name"], "state": state,
             "progress": 1.0 if state == "done" else (min(1.0, received / total) if total > 0 else 0.0),
-            "verify": None, "speed": "", "remain": 0, "received": human_size(received),
-            "total": human_size(total) if total > 0 else "", "folder": False, "error": "", "ended": ended}
+            "verify": None, "speed": human_size(speed) + "/s" if running else "",
+            "remain": int((total - received) / speed) if running and total > received else 0,
+            "received": human_size(received), "total": human_size(total) if total > 0 else "",
+            "folder": False, "error": "", "ended": ended}
 
 
-def live_transfers(live, recorded):
+def live_transfers(live, recorded, written=None):
     """Correct lagging native rows only with the same committed download ID and filename."""
+    written = written or {}
     completed = {(str(row["id"]), row["name"]): row for row in recorded
                  if row.get("id") is not None and row.get("key") == "done"}
+    running = {str(row["id"]): row for row in recorded if row.get("id") is not None and row.get("key") == "downloading"}
     items = []
     for raw in live:
         item = transfer_view(raw)
@@ -152,6 +182,14 @@ def live_transfers(live, recorded):
                         received=human_size(row["received"] or 0),
                         total=human_size(row["total"]) if row["total"] else "",
                         ended=history_transfer(row, 0)["ended"])
+        elif item["state"] == "downloading" and item["id"] in written and item["id"] in running:
+            # A hidden transfer page stops refreshing; the partial file keeps growing.
+            got, speed = written[item["id"]]
+            total = running[item["id"]]["total"] or 0
+            if total > 0 and got / total > item["progress"]:
+                item.update(progress=min(1.0, got / total), received=human_size(got), total=human_size(total))
+                if not item["speed"] and speed > 0:
+                    item.update(speed=human_size(speed) + "/s", remain=int((total - got) / speed))
         items.append(item)
     return items
 
@@ -191,7 +229,32 @@ class App:
         self.profile_dir, self.clock = profile_dir, clock
         self.accepted = set()
         self.failures = {}
+        self.samples = {}  # download id -> (time, bytes on disk, smoothed bytes per second)
         self.lock = threading.Lock()
+
+    def _measure(self, rows):
+        """Bytes on disk and speed for running downloads, from successive polls."""
+        measured = {}
+        now = self.clock()
+        with self.lock:
+            for row in rows:
+                if row.get("id") is None:
+                    continue
+                written = disk_bytes(row)
+                if written is None:
+                    continue
+                key = str(row["id"])
+                speed = 0.0
+                if key in self.samples:
+                    then, before, speed = self.samples[key]
+                    if now > then and written >= before:
+                        instant = (written - before) / (now - then)
+                        speed = instant if not speed else speed * 0.6 + instant * 0.4
+                self.samples[key] = (now, written, speed)
+                measured[key] = (written, speed)
+            for key in [key for key in self.samples if key not in measured]:
+                del self.samples[key]
+        return measured
 
     def check_login(self, header, address):
         """Return None when authorized, else the HTTP status to send."""
@@ -247,14 +310,15 @@ class App:
                 live = self.cloud.transfers()
             except (client.BrowserUnavailable, RuntimeError, OSError):
                 live = None
+            try:
+                rows = history.recent_downloads(self.profile_dir, limit=100)
+            except (sqlite3.Error, OSError):
+                rows = []  # Rotating history must not break a working native list.
+            written = self._measure(rows)
             if live is not None:
-                try:
-                    rows = history.recent_downloads(self.profile_dir, limit=100)
-                except (sqlite3.Error, OSError):
-                    rows = []  # Rotating history must not break a working native list.
-                return transfers_view(live_transfers(live, rows), True)
-            rows = history.recent_downloads(self.profile_dir)
-            return transfers_view([history_transfer(row, index) for index, row in enumerate(rows)], False)
+                return transfers_view(live_transfers(live, rows, written), True)
+            return transfers_view([history_transfer(row, index, *written.get(str(row.get("id")), (None, 0.0)))
+                                   for index, row in enumerate(rows)], False)
         if path == "/api/local":
             return {"downloads": history.recent_downloads(self.profile_dir)}
         if path == "/api/watch":

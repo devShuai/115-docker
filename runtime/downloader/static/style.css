@@ -189,6 +189,7 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
 
 /* Transfers */
 .tabs { display: flex; gap: 12px; padding: 0 10px; border-bottom: 1px solid var(--line); }
+.tab { flex: none; white-space: nowrap; }
 .tab { position: relative; height: 44px; padding: 0 6px; border: 0; background: none; font-weight: 500; color: var(--text-2); }
 .tab:hover, .tab[aria-selected="true"] { color: var(--text); }
 .tab[aria-selected="true"]::after {
@@ -341,6 +342,11 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
   .cli-btn { padding: 0 9px; }
   .top-right { gap: 10px; }
   .cli-dialog { height: calc(100vh - 32px); }
+  /* Four queue tabs fit a phone with tighter spacing; scroll sideways if a font runs wide. */
+  .queue .tabs { gap: 2px; padding: 0 4px; overflow-x: auto; scrollbar-width: none; }
+  .queue .tabs::-webkit-scrollbar { display: none; }
+  .queue .tab { padding: 0 6px; }
+  .queue .tab[aria-selected="true"]::after { bottom: 0; }
   /* Code scrolls sideways on phones, so the copy button sits below it instead of over it. */
   .snippet { display: flex; flex-direction: column; }
   .snippet .api-cli { margin-bottom: 6px; padding-right: 12px; }

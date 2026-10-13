@@ -190,8 +190,12 @@ async function refreshTransfers() {
     document.title = "进度更新中 · 115 下载";
     throw error;
   }
-  sync($("nas"), transfers.items, (item) => item.id, transferRow, "还没有下载到 NAS 的任务");
-  $("nas-note").hidden = tab !== "nas" || transfers.live || !transfers.items.length;
+  // Finished rows leave 下载中 and move to 最近下载.
+  const running = transfers.items.filter((item) => RUNNING.has(item.state) || item.state === "paused");
+  const finished = transfers.items.filter((item) => !RUNNING.has(item.state) && item.state !== "paused");
+  sync($("nas"), running, (item) => item.id, transferRow, "没有正在下载的任务");
+  sync($("recent"), finished, (item) => item.id, transferRow, "还没有下载到 NAS 的任务");
+  $("nas-note").hidden = tab !== "nas" || transfers.live || !running.length;
   $("count-nas").textContent = transfers.active || "";
   const busy = transfers.active > 0;
   $("activity").hidden = !busy;
@@ -231,9 +235,14 @@ function cloudRow(node, task) {
 async function refreshCloud() {
   try {
     cloud = (await api("api/offline")).tasks;
-    sync($("cloud"), cloud, (task) => task.hash || task.name, cloudRow, "没有云下载任务");
+    const key = (task) => task.hash || task.name;
+    sync($("cloud"), cloud.filter((task) => task.state !== "done"), key, cloudRow, "没有进行中的云下载");
+    sync($("cloud-done"), cloud.filter((task) => task.state === "done"), key, cloudRow, "最近没有完成的云下载");
   } catch (error) {
-    if (!cloud.length) sync($("cloud"), [], null, null, error.message);
+    if (!cloud.length) {
+      sync($("cloud"), [], null, null, error.message);
+      sync($("cloud-done"), [], null, null, error.message);
+    }
   }
   $("count-cloud").textContent = cloud.filter((task) => task.state === "downloading").length || "";
   updateWaiting();
@@ -699,14 +708,16 @@ async function submit() {
 /* ---------- Tabs and polling ---------- */
 
 let tab = "nas";
+const TABS = ["nas", "recent", "cloud", "cloud-done"];
 function selectTab(name) {
   tab = name;
-  for (const which of ["nas", "cloud"]) {
+  for (const which of TABS) {
     $("tab-" + which).setAttribute("aria-selected", String(which === name));
     $(which).hidden = which !== name;
   }
-  $("nas-note").hidden = name !== "nas" || transfers.live || !transfers.items.length;
-  if (name === "cloud") kickCloud();
+  $("nas-note").hidden = name !== "nas" || transfers.live ||
+    !transfers.items.some((item) => RUNNING.has(item.state) || item.state === "paused");
+  if (name.startsWith("cloud")) kickCloud();
 }
 
 // Polls again after each response; hidden tabs stop polling until shown again.
@@ -793,8 +804,7 @@ $("filter").addEventListener("input", () => {
   renderSelection();
 });
 $("more").addEventListener("click", loadMore);
-$("tab-nas").addEventListener("click", () => selectTab("nas"));
-$("tab-cloud").addEventListener("click", () => selectTab("cloud"));
+for (const which of TABS) $("tab-" + which).addEventListener("click", () => selectTab(which));
 try {
   $("auto").checked = localStorage.getItem("115-auto") === "1";
 } catch (error) {
@@ -933,7 +943,7 @@ $("cli-dialog").addEventListener("click", (event) => {
 
 const kickStatus = every(refreshStatus, () => 15000);
 const kickTransfers = every(refreshTransfers, () => (transfers.active || Date.now() < boostUntil ? 2000 : 8000));
-const kickCloud = every(refreshCloud, () => (waiting.size ? 4000 : tab === "cloud" ? 20000 : 60000));
+const kickCloud = every(refreshCloud, () => (waiting.size ? 4000 : tab.startsWith("cloud") ? 20000 : 60000));
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) return;
   kickStatus();

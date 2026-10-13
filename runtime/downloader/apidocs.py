@@ -131,7 +131,7 @@ NOTES = {
     "content": "hash 来自 offline；任务需完成并已搬入网盘。接口搜索最近任务，找不到或未就绪返回 400。",
     "download": "提供 path 或 items；两者都有时 items 优先。items 不可空，最多 1150 项；响应表示已提交，完成情况查询 transfers/local。",
     "share": "省略 items 会下载分享顶层全部内容（文件夹递归）；传 items 时不可空，最多 1150 项。响应表示已提交。",
-    "transfers": "progress 为 0–1，完成恒为 1；verifying 表示文件下载后校验中，不能按 progress=1 判定最终完成。live=false 为历史降级，无实时速度。最多 50 项。",
+    "transfers": "progress 为 0–1，完成恒为 1；verifying 表示文件下载后校验中，不能按 progress=1 判定最终完成。live=false 表示 115 浏览器的传输列表页未打开，数据来自下载历史，进度和速度按磁盘上已写入的数据估算。最多 50 项。",
     "local": "最近 30 条浏览器下载历史；received/total 为字节。以 key=done 为完成依据；并非 NAS 全盘文件列表。",
     "watch": "status 是中文状态：等待云下载完成 / 已开始下载到 NAS / 云下载失败。sent 表示已发送，不等于本地完成；数据持久化在配置卷。",
 }

@@ -27,7 +27,7 @@ python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json apis
 - **查看网盘或分享**：`inspect` 识别链接/绝对路径，`browse` 列目录。分页使用 `offset + items.length`，直到 `truncated=false`；分享根目录用 `--cid ''`。列表中的 `name` 映射为下载项 `n`，原样复制 `pc`（网盘）或 `sc`（分享）以及 `is_dir`。
 - **云下载**：`add` 提交 magnet/ed2k/HTTP(S)/FTP 链接；检查响应的 `failed`，HTTP 200 仍可能部分失败。用户要求完成后下载到 NAS 时加 `--to-nas`。否则先查询 `offline`，在 `ready=true` 后使用 `content HASH` 获取可选内容。
 - **NAS 下载**：用 `download --path` 下载整项，或用 `--items` 下载用户选择的内容。`share` 带原分享链接与提取码；省略 `--items` 会下载分享全部内容，只有用户要求下载全部时才省略。
-- **进度**：`transfers` 查询实时传输；`live=false` 时降级为历史记录，可用 `local` 核对。云下载 `percent` 是 0–100，NAS `progress` 是 0–1；最终完成以 `state=done` / `key=done` 为准。`verifying` 仍在校验。`watch` 的“已开始下载到 NAS”表示已提交，还需要跟踪本地完成状态。
+- **进度**：`transfers` 查询实时传输；`live=false` 时数据来自下载历史，进度按磁盘上已写入的数据估算，可用 `local` 核对。云下载 `percent` 是 0–100，NAS `progress` 是 0–1；最终完成以 `state=done` / `key=done` 为准。`verifying` 仍在校验。`watch` 的“已开始下载到 NAS”表示已提交，还需要跟踪本地完成状态。
 
 ## 常见示例
 
