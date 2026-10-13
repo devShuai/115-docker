@@ -1,123 +1,88 @@
-# 115 浏览器 Docker 部署方案
+# 115 Docker
 
-本工程默认使用 **KasmVNC 1.5.0 原生网页桌面**，包含 115 Linux 安装包、KasmVNC 安装包及服务端和网页客户端源码、290 个 Debian 系统依赖包、桌面主题、启动与健康检查脚本、Compose 配置和 HTTPS 反代示例。原来的 TigerVNC + Websockify + noVNC 完整保留，可通过环境变量回退。参考 [dream10201/115Docker](https://github.com/dream10201/115Docker) 的架构，直接从 Debian 构建自己的镜像。
+在 Docker 中运行 115 浏览器，通过网页访问桌面、选择网盘与分享内容并下载到 NAS。项目自带 115 安装包、桌面组件、网页客户端、下载页面、JSON API、命令行工具与构建依赖，使用自己的下载目录和浏览器数据卷。
 
-桌面采用 **Xfce 4.20（X11）**，搭配 Arc-Dark 主题、Papirus-Dark 图标、中文字体和静态壁纸。关闭窗口合成器、动画、文字光标闪烁和通知淡入淡出；远程浏览器客户端是主要负载。连接后远程桌面分辨率跟随访问端窗口变化，115 启动时最大化。
+默认采用 **KasmVNC 1.5.0 + Xfce 4.20**，保留 TigerVNC + Websockify + noVNC 后端。参考 [dream10201/115Docker](https://github.com/dream10201/115Docker) 的架构，使用固定 Debian 基础镜像构建。115 浏览器版本为 **36.0.1**，镜像支持 **linux/amd64**。
 
-## 工程内容
+- [特色功能](#特色功能)
+- [部署方式](#部署方式)
+- [访问与登录](#访问与登录)
+- [下载页面、CLI 与 JSON API](#下载页面cli-与-json-api)
+- [配置项](#配置项)
+- [更新与维护](#更新与维护)
+- [构建与流水线](#构建与流水线)
+- [排错](#排错)
 
-```text
-Dockerfile                         本地构建完整应用镜像
-compose.yaml                       应用部署和数据卷
-compose.compat.yaml                seccomp 兼容配置
-compose.registry.yaml              拉取流水线发布的镜像
-compose.legacy.yaml                切换原后端用于回退
-.onedev-buildspec.yml               OneDev 校验、构建、运行验收与发布
-.env.example                       环境变量模板
-.dockerignore                      排除敏感数据和运行目录
-runtime/
-  entrypoint.sh                    校验配置、准备运行目录后建立 D-Bus 会话
-  environment.sh                   入口和桌面共用的环境校验与目录准备
-  start.sh                         启动与进程管理
-  115.sh                           浏览器启动参数
-  configure.py                     下载路径和 Cookie 配置
-  healthcheck.py                   后端认证 HTTP、X11 和 xfwm4 检查
-  index.html                       默认连接入口
-  web/                             两种网页客户端的默认中文界面与注入脚本
-  kasmvnc/                         KasmVNC 校订版中文翻译和中文断开页
-  downloader/                      添加下载的网页与 JSON 接口，以及 CDP 客户端
-  novnc/                           自动连接和强制分辨率适配
-  115Cookie/                       本工程的可选 Cookie 扩展
-rootfs/
-  opt/.config/xfce4/               Xfce 窗口、面板、桌面、快捷键和显示设置
-  opt/.config/gtk-3.0/             GTK 3 主题与字体
-  opt/Desktop/                     浏览器与下载目录快捷方式
-  usr/share/applications/          下载目录启动器（面板和开始菜单使用）
-  usr/share/backgrounds/115/        本地静态 SVG 壁纸
-  usr/share/icons/                  浏览器启动图标
-vendor/
-  115browser-36.0.1-amd64.deb        115 官方安装包
-  kasmvncserver-trixie-1.5.0-amd64.deb  KasmVNC 和编译完成的网页资源
-  kasmvnc-1.5.0-source.tar.gz        KasmVNC 对应服务端源码
-  kasmvnc-web-475ecfa53565.tar.gz     对应网页客户端完整源码
-  debian/                          290 个系统传递依赖 deb
-  novnc-1.6.0.tar.gz                noVNC 完整源码归档
-  websockify-0.13.0.tar.gz           Websockify 完整源码归档
-  manifest.json                    来源、版本、大小和校验值
-  SHA256SUMS                       构建前校验清单
-scripts/vendor.py                  校验或重新下载固定归档
-scripts/ci-smoke.sh                 镜像内启动桌面和浏览器验收
-scripts/ci-rfb.py                   回退后端 RFB 认证与远程分辨率验收
-scripts/ci-desktop.py               两种后端真实网页连接、自适应及性能对比
-runtime/downloader/cdp.py           工程自带的标准库 CDP/WebSocket 客户端（下载接口和测试共用）
-runtime/downloader/session.py       登录 Cookie 持久化（保持 115 登录）
-runtime/downloader/cli.py           命令行客户端 115dl
-scripts/perf-fixture.html           固定本地静态及动画测试画面
-tests/test_runtime.py              配置与启动管理验证
-nginx/115-kasm.conf.example        KasmVNC HTTPS 和原生认证转发
-nginx/115.conf.example             原后端 HTTPS、独立认证与 WebSocket 示例
-THIRD_PARTY.md                     第三方来源和许可
-data/                             部署时创建的运行数据
-backups/                          部署时创建的备份
-```
+## 特色功能
 
-移动整个工程即可继续构建，复制时应包含约 327 MiB 的 vendor。系统和应用安装在 BuildKit `--network=none` 下完成，不查询 apt 源，不安装 npm/Python 网络依赖。Debian 基础镜像固定为 manifest 中的 OCI digest；首次构建仍需拉取或预先缓存基础镜像和 BuildKit 前端，CI 执行器镜像也由基础设施提供。[组件来源和许可](THIRD_PARTY.md)
+| 功能 | 说明 |
+| --- | --- |
+| 浏览器访问完整桌面 | KasmVNC 原生 HTTP/WebSocket，配合 Xfce、Arc-Dark 主题、Papirus-Dark 图标和中文字体；115 启动时最大化 |
+| 分辨率自适应 | 窗口大小和全屏状态变化时调整真实 X11 分辨率，最大化的 115 窗口同步布局 |
+| Mac Retina 与显示缩放 | 默认按网页逻辑像素适配，支持跨屏像素比例变化；可选择“原生分辨率”提高清晰度 |
+| 网页添加下载 | 磁力、ed2k、HTTP、FTP 链接加入云下载，完成后选择文件，或自动将整个任务下载到 NAS |
+| 网盘和分享内容选择 | 浏览网盘、解析路径与分享链接、进入子目录、勾选文件或文件夹；网盘支持按完成时间、名称、大小排序 |
+| 下载进度 | 查看云下载任务、等待任务、NAS 下载进度、速度与剩余时间；传输列表关闭时显示本地下载记录 |
+| 自动保持登录 | 扫码后保存登录 Cookie，浏览器重开或容器重建后尝试恢复登录；未登录时每 2 秒检查，已登录时每分钟检查 |
+| CLI 与 JSON API | 内置 `115dl`，页面与接口使用同一套凭据；右上角“命令行与接口”弹窗提供使用当前访问地址的示例 |
+| 数据持久化 | 浏览器配置、登录状态、自动下载任务保存在 profile，下载文件存放在独立挂载目录 |
+| 工程内依赖与验收 | vendor 固定版本与 SHA256；OneDev 验证实际桌面连接、缩放、鼠标坐标、性能和登录恢复后才发布 `latest` |
 
-## 桌面选择
+桌面关闭合成器和动画，默认 30 FPS、2 个编码线程，优先使用开销较低的 JPEG。远程桌面传输画面和操作；文件由容器内 **115 浏览器自己的下载引擎**下载。关闭访问端网页不会停止容器内正在运行的任务。
 
-[Xfce](https://www.xfce.org/) 4.20 只运行四个部件：xfwm4 窗口管理器、xfce4-panel 面板、xfdesktop 桌面和 xfsettingsd 设置服务，不启动会话管理器、电源管理或屏保。文件管理使用 Thunar。Xfce 与 115 浏览器的文件对话框同为 GTK 3，共用一套主题；中文翻译完整；Kasm 官方桌面镜像同样使用 Xfce。
+## 部署方式
 
-外观采用 [Arc-Dark](https://github.com/jnsh/arc-theme) 窗口与控件主题、Papirus-Dark 图标和原有深蓝壁纸。底部面板依次为开始菜单（Whisker，收藏 115 浏览器、下载目录和文件管理器）、115 浏览器、下载目录、窗口列表、托盘和两行时钟。桌面保留浏览器和下载目录图标。
+### 主机要求与端口
 
-远程桌面的每一帧变化都要编码传输，因此关闭窗口合成器（阴影、透明、切换预览）、GTK 动画、文字光标闪烁和通知淡入淡出，并使用灰度抗锯齿，文字在访问端缩放时更干净也更易压缩。Xfce 显示设置不保存配置、不弹出新显示器提示，分辨率完全由网页客户端决定。
+推荐使用 x86-64 Linux 主机或 x86 NAS，预留约 2 CPU、4 GiB 内存上限和 1 GiB 共享内存。profile 优先放在本地 SSD，下载目录使用有足够空间的数据盘。Apple Silicon 需要 amd64 模拟；ARM NAS 不能仅凭 `platform: linux/amd64` 运行此镜像。
 
-去掉 tint2 后同时去掉了它带入的 imlib2、ghostscript、libheif 和 urw 字体等依赖，vendor 中新增 45 个包、删除 38 个包，体积基本持平；其中约 10 MB 是新增的 Noto 彩色 emoji 字体，网页里的 emoji 不再显示为方块。
+| 用途 | 容器端口 | Compose 默认宿主机端口 | 下文群晖示例 |
+| --- | --- | --- | --- |
+| 远程桌面 | 1150/tcp | 1150 | 11501 |
+| 下载页面与 JSON API | 1151/tcp | 1151 | 11502 |
 
-快捷键：Alt 加 Tab 切换窗口，Alt 加 F4 关闭窗口，Super 加 E 打开下载目录，Super 加 B 打开浏览器，Ctrl 加 Alt 加 D 显示桌面。双击标题栏切换最大化。
+浏览器调试端口 9222 仅在容器内回环监听，**不要映射到宿主机**。所有部署方式都需要两个持久目录：
 
-流水线在相同 1600×900 桌面、30 FPS 上限和全新测试 profile 下，依次运行两种后端，测量静态画面 8 秒与动画 15 秒。产物包含完整桌面及远程后端的 CPU、PSS 内存、WebSocket 接收量、测试画面的生成帧率、客户端像素变化和截图。像素以约 2 Hz 稀疏采样，只用于确认持续更新，不代表渲染 FPS。CPU 100% 表示一个核心，传输量不含 HTTP/TLS/TCP 开销；这是执行器上的固定场景对比，实际标签页、视频、下载和网络条件仍需在部署后测量。
+| 容器目录 | 内容 |
+| --- | --- |
+| `/etc/115` | 浏览器 profile、`115-session.json` 登录状态、`115-downloads.json` 自动下载任务 |
+| `/opt/Downloads` | 下载文件 |
 
-## 架构和主机
+同一 profile 只能由一个浏览器实例使用。迁移已有容器时沿用原目录，不要用空目录替换。
 
-```text
-访问端浏览器 → SSH 隧道或 HTTPS 认证代理 → 宿主机 127.0.0.1:1150
-  → KasmVNC 原生 HTTP/WebSocket → Xfce 桌面 → 115 浏览器
-  回退：noVNC → Websockify → TigerVNC → 同一桌面
-添加下载：宿主机 127.0.0.1:1151 → 下载接口 → 容器内 127.0.0.1:9222 → 同一个 115 浏览器
-       /etc/115       → data/profile
-       /opt/Downloads → data/downloads
-```
+### 方式一：Compose 拉取已发布镜像
 
-网页客户端传输桌面画面与操作，115 下载流量由容器直接访问 115 服务并写入数据卷。关闭访问网页时，容器和浏览器继续运行；主机休眠、账号失效和容器退出仍会中断任务。
-
-推荐 Linux x86 主机或 x86 NAS，起步为 2 CPU、4 GiB 内存上限和 1 GiB 共享内存；宿主机为系统和其他服务留余量。profile 放在本地 SSD，下载放在数据盘，不将运行中的 Chromium profile 放在 SMB 或 NFS 共享上。下载容量按文件大小和未完成任务预留。
-
-115 安装包为 amd64，Compose 明确指定 `linux/amd64`。Apple Silicon 可以在支持模拟的 Docker Desktop 中试用；ARM NAS 需要额外的模拟能力，不能仅靠 platform 参数运行。长期下载优先使用 x86 主机。
-
-Linux 建议 Docker Engine 28 或更新的受支持版本及 Compose 插件。Docker 文档说明，旧于 28 的版本存在同一二层网络访问回环发布端口的历史问题；老 NAS 还需配置主机或网络防火墙。[Docker 端口发布说明](https://docs.docker.com/engine/network/port-publishing/)
-
-## 首次部署
-
-在目标 Docker 主机的项目目录执行：
+适合直接使用流水线镜像。先取得工程并准备配置：
 
 ```bash
-docker version
-docker compose version
-python3 scripts/vendor.py
+git clone https://github.com/devShuai/115-docker.git
+cd 115-docker
 cp .env.example .env
 chmod 600 .env
-mkdir -p data/profile data/downloads backups
-chmod 700 data/profile backups
+mkdir -p data/profile data/downloads
+chmod 700 data/profile
 chmod 750 data/downloads
 ```
 
-编辑 `.env`：默认 `REMOTE_BACKEND=kasm`、`REMOTE_USER=115`，`VNC_PASSWORD` 使用随机的 **8～128 位 ASCII 字母数字**，建议至少 16 位。需要原后端回退时，使用恰好 8 位字母数字。启动入口在建立 D-Bus 会话前校验密码和配置。`VNC_FPS=30` 控制刷新上限，`KASM_THREADS=2` 控制矩形编码线程；默认走 JPEG/WebP 图像传输，不启用 GPU 或 H.264/H.265/AV1 编码。[KasmVNC 配置](https://docs.kasmvnc.com/docs/configuration/)、[TigerVNC 密码说明](https://tigervnc.org/doc/vncpasswd.html)
-
-`KASM_WEBP_BUDGET=0` 优先快速回退到编码开销更低的 JPEG，适合 NAS 软件编码；仍可能编码少量 WebP。取值 0～100 表示每帧允许 WebP 编码使用的时间比例。带宽较紧张且 CPU 有余量时可尝试 30，重新测量 CPU 和传输量。服务端动态画质范围为 6～8，静态文字优先保留清晰度。
-
-默认 `IMAGE_115=115-browser-local:36.0.1` 是本地镜像名称，Compose 不拉取该名称的远程镜像。保留 `BIND_IP=127.0.0.1`。如需使用已有磁盘，将 DOWNLOAD_DIR 改为目标主机绝对路径，例如 `/volume1/downloads/115`，预先创建目录并允许容器写入。PROFILE_DIR 同样支持绝对路径。
+编辑 `.env`，填写 `VNC_PASSWORD`：KasmVNC 支持 **8～128 位 ASCII 英文字母或数字**，建议至少 16 位。`IMAGE_115` 保持未设置，registry 覆盖文件会选择 `latest`；也可显式设为 `registry.devshuai.com/shuai-repo/115-docker:latest`。
 
 ```bash
+# 私有仓库需要先使用自己的拉取账号登录
+docker login registry.devshuai.com
+docker compose -f compose.yaml -f compose.registry.yaml config --quiet
+docker compose -f compose.yaml -f compose.registry.yaml pull
+docker compose -f compose.yaml -f compose.registry.yaml up -d --no-build
+docker compose -f compose.yaml -f compose.registry.yaml ps
+```
+
+默认仅绑定 `127.0.0.1`。在宿主机访问桌面 `http://127.0.0.1:1150/` 和下载页面 `http://127.0.0.1:1151/`；远程访问见下文 SSH 隧道或 HTTPS 入口。后续操作始终携带相同的两个 `-f` 参数。
+
+### 方式二：Compose 在本地构建
+
+沿用上面的配置和数据目录准备步骤，保持 `IMAGE_115` 未设置，不使用 `compose.registry.yaml`：
+
+```bash
+python3 scripts/vendor.py
 docker compose config --quiet
 docker compose build
 docker compose up -d
@@ -125,290 +90,300 @@ docker compose ps
 docker compose logs --tail=100 browser115
 ```
 
-也可使用 `docker compose up -d --build`。构建校验所有本地包后离线安装 115、KasmVNC 和系统依赖，并解压用于回退的 noVNC 与 Websockify，不查询上游 latest 应用镜像或动态版本。BuildKit 临时挂载 vendor，使 deb 安装包不留在最终镜像层中。
+工程包含 **291 个 Debian 依赖包，共 297 个锁定归档，约 327 MiB**。安装步骤在 BuildKit `--network=none` 下执行，不查询 apt 源，也不下载 npm/Python 依赖。首次构建仍需拉取或预先缓存 Debian 基础镜像和 Dockerfile 前端。复制工程时需包含 `vendor/`；缺失归档可使用 `python3 scripts/vendor.py --fetch` 按固定来源补齐并校验。
 
-启动时先校验密码和环境参数、创建权限为 700 的 `/run/115`，再建立 D-Bus 会话、准备密码文件和浏览器配置，依次启动 KasmVNC、xfwm4、xfsettingsd、xfce4-panel、xfdesktop 和可选的 115 浏览器。Kasm 模式不启动 Python Websockify 中继；legacy 模式启动原 TigerVNC 与 Websockify。关键桌面服务退出会让容器退出，由 Docker 重启策略恢复；主动关闭浏览器会保留桌面。
+### 方式三：群晖 Container Manager
 
-初始化设置默认下载目录为 `/opt/Downloads`，保留已有下载设置。首次登录后仍需在 115 中核对下载目录，并验证文件出现在宿主机。
+在“映像”中下载 `registry.devshuai.com/shuai-repo/115-docker:latest`，私有 Harbor 需先配置拉取账号。创建名为 `115-docker` 的容器，参考以下设置；NAS 目录按自己的存储位置修改，并事先创建。
 
-## 访问和登录
+| 设置 | 值 |
+| --- | --- |
+| 宿主机 11501 → 容器端口 | 1150/tcp |
+| 宿主机 11502 → 容器端口 | 1151/tcp |
+| `/volume2/docker/115-docker-profile` → 容器目录 | `/etc/115`，读写 |
+| `/volume1/downloads/115` → 容器目录 | `/opt/Downloads`，读写 |
+| `PASSWORD` | 自己设置的 8～128 位英文字母或数字 |
+| `REMOTE_USER` / `REMOTE_BACKEND` | `115` / `kasm` |
+| `ENABLE_DOWNLOAD_API` / `KEEP_115_LOGIN` | `true` / `true` |
+| `TZ` | `Asia/Shanghai`，留空时也使用该时区 |
+| CPU / 内存 / 共享内存 | 起步 2 CPU / 4 GiB / 1 GiB；界面未提供的项可用 Compose 或 docker run 设置 |
+| 重启策略 | `unless-stopped`，或配置对应的自动重启与开机启动 |
 
-推荐使用 Chrome、Chromium 或 Edge，在 Docker 宿主机打开 `http://127.0.0.1:1150/`，输入 `REMOTE_USER`（默认 `115`）及配置的密码后，用 115 官方客户端扫描二维码登录。浏览器配置和登录凭据保存在 `/etc/115` 数据卷中，重建后保留。115 的登录是会话 Cookie，浏览器正常退出或容器重建后会被清掉。为此容器会在登录后把这几个登录 Cookie 保存到 `/etc/115/115-session.json`（权限 600），浏览器启动后若检测到未登录，会在几秒内自动把它们注入为长期 Cookie 并刷新页面，所以关闭再打开浏览器、重启或重建容器后都不用重新扫码（重开后稍等几秒自动恢复登录）；在别处退出登录、或 115 服务端让登录失效时仍需重新扫码。该功能由添加下载接口的进程负责（需要 `ENABLE_DOWNLOAD_API=true`，默认开启），可用 `KEEP_115_LOGIN=false` 关闭。
+保持镜像默认的入口和启动命令，不启用 privileged，不挂载 Docker socket。下载文件可能属于 root，按 NAS 用户需要设置共享组或 ACL。
 
-KasmVNC 使用浏览器原生 Basic 认证，页面和 WebSocket 均要求认证；原始 RFB TCP 端口不开放。Safari 的 Basic 认证 WebSocket 兼容性存在上游限制，优先使用 Chromium 系浏览器。[客户端说明](https://docs.kasmvnc.com/docs/clientside)
+启动后打开 `http://NAS_IP:11501/` 登录桌面，`http://NAS_IP:11502/` 使用下载页面。群晖界面填写的是 **`PASSWORD`**；`VNC_PASSWORD` 是 Compose 的变量名，直接创建容器时不能混用。
 
-远程部署时，在访问端电脑建立 SSH 隧道：
+### 方式四：docker run（含 NAS SSH 部署）
+
+在 NAS 上准备目录和 `.env.nas`，填写 `PASSWORD` 后再运行。密码规则同上。
+
+```dotenv
+PASSWORD=
+REMOTE_USER=115
+REMOTE_BACKEND=kasm
+ENABLE_DOWNLOAD_API=true
+KEEP_115_LOGIN=true
+TZ=Asia/Shanghai
+```
+
+```bash
+mkdir -p /volume2/docker/115-docker-profile /volume1/downloads/115
+chmod 600 .env.nas
+sudo /usr/local/bin/docker login registry.devshuai.com
+sudo /usr/local/bin/docker pull registry.devshuai.com/shuai-repo/115-docker:latest
+
+# 改为自己的 NAS 局域网地址
+NAS_IP=192.168.1.100
+sudo /usr/local/bin/docker run -d --name 115-docker \
+  --restart unless-stopped --init \
+  --shm-size=1g --memory=4g --cpus=2 --pids-limit=512 \
+  --security-opt no-new-privileges:true \
+  --env-file .env.nas \
+  -p "$NAS_IP:11501:1150" -p "$NAS_IP:11502:1151" \
+  --mount type=bind,src=/volume2/docker/115-docker-profile,dst=/etc/115 \
+  --mount type=bind,src=/volume1/downloads/115,dst=/opt/Downloads \
+  registry.devshuai.com/shuai-repo/115-docker:latest
+```
+
+普通 Linux 主机使用自己的目录和 `docker` 命令路径；仅供本机或隧道访问时把 `NAS_IP` 改为 `127.0.0.1`。CLI 创建的容器在群晖中的展示、开机管理以安装的 Container Manager 版本为准。
+
+## 访问与登录
+
+默认桌面使用 KasmVNC Basic 认证，用户名为 `REMOTE_USER`，密码为容器的 `PASSWORD`；下载页面和 API 使用相同凭据。进入桌面后用 115 官方客户端扫码登录。优先使用 Chrome、Chromium 或 Edge；Safari 的 Basic 认证 WebSocket 兼容性受 KasmVNC 上游限制。
+
+登录保持默认启用：Cookie 保存到 `/etc/115/115-session.json`，权限为 600；检测到浏览器未登录时尝试恢复并刷新页面。正常重开后稍等几秒；服务端撤销登录、账号退出或要求安全验证时仍需重新扫码。该功能依赖 `ENABLE_DOWNLOAD_API=true`；关闭下载接口也会停止登录保持。仅关闭保持功能时向容器传入 `KEEP_115_LOGIN=false`。
+
+`.env`、`.env.nas` 和 profile 含账号凭据，应避免提交或分享。可选 Cookie 扩展通过 `ENABLE_COOKIE_EXTENSION=true` 和 `COOKIE_CID/SEID/UID/KID` 注入自己的 Cookie，默认关闭。
+
+### SSH 隧道与 HTTPS
+
+Compose 默认端口在远程主机回环地址监听，可从访问端建立两个隧道：
 
 ```bash
 ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
-  -L 127.0.0.1:1150:127.0.0.1:1150 user@docker-host
+  -L 127.0.0.1:1150:127.0.0.1:1150 \
+  -L 127.0.0.1:1151:127.0.0.1:1151 user@docker-host
 ```
 
-随后打开访问端的 `http://127.0.0.1:1150/`。访问端端口已占用时，修改 `-L` 的第一个 1150。
+随后访问本机的 1150 和 1151。若宿主机端口或绑定地址不同，替换 `-L` 右侧的目标地址与端口；例如 NAS 示例绑定在 NAS 的 LAN 地址，而非回环地址。
 
-LAN 直连可将 BIND_IP 改为宿主机实际 LAN 地址，同时限制来源并配置 HTTPS。Docker 发布端口会调整防火墙规则，应实测可达性，不能仅依据 UFW 面板判断。[Docker 端口发布说明](https://docs.docker.com/engine/network/port-publishing/)
+HTTPS 桌面入口参考 [nginx/115-kasm.conf.example](nginx/115-kasm.conf.example)，转发 Authorization 和 WebSocket 升级头。下载接口使用独立域名或端口反代到 1151，保留 Host 与 Authorization。该桌面示例仅配置了 1150，需为下载页面另配入口；两者不要混用同一个根路径。LAN 直连可设置 `BIND_IP` 为宿主机 LAN 地址，公网访问使用 HTTPS 或隧道。
 
-优先扫码登录。Cookie 注入需设置 `ENABLE_COOKIE_EXTENSION=true` 并填写自己的 COOKIE 字段，再重新创建容器。扩展由本工程提供，不加载远程脚本；值通过 JSON 编码生成到容器私有运行目录。Cookie 的客户端到期日期不保证服务端继续接受它。
+### Retina、中文与桌面
 
-`.env`、profile 和备份均作为账号凭据保护。Docker 管理员可读取容器环境变量。不要把实际账号配置提交或加入镜像构建上下文。
+桌面默认跟随网页 **CSS 逻辑分辨率**。例如可用区域 1440×900、DPR=2 时，默认仍为 1440×900；在显示设置开启“原生分辨率”后变为 2880×1800，画面更细致，同时编码像素数变为 4 倍。KasmVNC 会将逻辑尺寸向下取整为偶数。保持 Resize 为 Remote；多个访问端共享同一桌面，窗口大小可能互相影响。
 
-## 自适应分辨率
+桌面和网页客户端默认中文，时区为北京时间。KasmVNC 默认开启“使用本机输入法（IME）”，可直接使用访问端输入法；legacy 后端可通过剪贴板粘贴中文。访问 `/?lang=en` 可切换网页客户端为英文。书签栏默认隐藏，已有 profile 的个人选择保留，`Ctrl+Shift+B` 可切换。
 
-默认入口显式设置 `resize=remote`、自动连接和重连。KasmVNC 自带网页客户端的 remote resize 与服务端 `AcceptSetDesktopSize=1` 配合，改变 X11 桌面的真实分辨率。原后端继续使用 `runtime/novnc/mandatory.json` 强制 remote resize，覆盖旧的浏览器偏好。
+## 下载页面、CLI 与 JSON API
 
-xfwm4 管理最大化窗口。首次连接、访问端窗口变化和进出全屏时，远程桌面应随可用视口变化；DISPLAY_WIDTH、DISPLAY_HEIGHT 仅决定连接前的尺寸。网页设置中不要把 Resize 改为 Scaling 或 Disabled。
+首次先在桌面扫码。下载页面输入框可以接收以下内容：
 
-Mac Retina 和系统显示缩放默认按网页的 CSS 逻辑像素适配，保持可用的界面大小与较低编码开销。例如可用网页区域为 1440×900、像素比例为 2 时，默认远程桌面仍为 1440×900。跨不同缩放比例的屏幕时，客户端主动通知分辨率变化；缩小窗口或调整网页缩放不会再触发 KasmVNC 的“小屏高 DPI”自动放大规则。KasmVNC 会将尺寸向下取整到偶数，因此部分窗口边缘可能留出 1 个 CSS 像素。
+1. **云下载链接**：磁力、ed2k、HTTP、FTP，每行一个。任务完成后列出内容供勾选；也可自动将整个任务下载到 NAS。
+2. **网盘路径**：输入路径或点击“浏览网盘”，进入子目录并勾选文件与文件夹。完成时间指文件进入网盘的时间；支持时间、名称、大小排序。
+3. **115 分享链接**：支持提取码、子目录浏览和部分内容选择，也可下载整个文件夹。
+4. **任务与进度**：查看云下载、自动下载等待任务和 NAS 传输情况。实时速度来自浏览器传输列表，关闭该列表时显示历史记录。
 
-若希望按 Retina 物理像素渲染，可在 KasmVNC 网页设置的显示选项中开启“原生分辨率”，此时同一视口将请求 2880×1800。它会提高画面清晰度，但像素数量变成 4 倍，也可能使远程桌面控件显得更小；根据 NAS 性能与可读性选择。legacy/noVNC 继续使用逻辑像素适配。
+下载保存到 `/opt/Downloads` 对应的宿主机目录。自动下载任务保存在 `115-downloads.json`，容器重建后继续跟踪。提交后的 10 分钟内每 10 秒查询一次，之后每分钟一次；已完成和失败记录保留 7 天。
 
-```bash
-docker compose exec -e DISPLAY=:115 browser115 xrandr --current
-```
+### 115dl 命令行
 
-改变窗口后再次执行，确认实际尺寸变化，并检查 115 内容重新布局。流水线使用真实网页客户端验证 1024×768、1280×720、1920×1080、1600×900，要求网页 canvas 与 xrandr 同时匹配；另模拟 125%、150%、200% 像素比例、窄窗口和奇数尺寸，验证逻辑/原生分辨率及实际 X11 鼠标坐标。[KasmVNC 配置](https://docs.kasmvnc.com/docs/configuration/)
-
-多个访问端共享同一桌面和分辨率，不同窗口大小可能互相影响。独立会话使用独立 Compose 项目、profile 和宿主机端口。
-
-## 中文环境与时区
-
-镜像默认 `zh_CN.UTF-8` 和 `LANGUAGE=zh_CN:zh`，中文字体为 Noto Sans/Serif/Mono CJK SC。Debian slim 基础镜像会在安装时丢弃全部翻译文件，导致即使语言是中文，桌面菜单和 GTK 对话框（例如浏览器的“打开文件”窗口）仍显示英文。构建时通过 dpkg 规则保留 `/usr/share/locale/zh_CN`，并在构建中断言 GTK 中文翻译存在。
-
-时区默认 `Asia/Shanghai`。群晖 Container Manager 图形界面创建的容器常常不带 `TZ` 或传入空值，空 `TZ` 会被系统当作 UTC，入口统一回落到北京时间。需要其他时区时设置 IANA 名称，例如 `TZ=Asia/Tokyo` 或 `TZ=UTC`；不存在的名称会在启动 D-Bus 前被拒绝，避免桌面时钟和下载时间悄悄变成 UTC。
-
-KasmVNC 网页客户端原本按访问端浏览器的语言显示，浏览器首选英文时整套界面都是英文。现在 `vnc.html` 加载前先注入 `zh-default.js`，不论浏览器语言都显示简体中文；需要英文时访问 `/?lang=en`。KasmVNC 自带的中文翻译缺少 23 项并有较多机翻，`runtime/kasmvnc/zh_CN.json` 是保留全部原有词条的校订版，“会话已断开”页面也换成中文并提供重新连接。原 noVNC 后端同样默认中文。
-
-中文输入使用访问端电脑自己的输入法：默认开启 KasmVNC 设置中的“使用本机输入法（IME）”，首次访问自动打开；在设置里关闭后，浏览器会记住选择。镜像内不安装 fcitx 等输入法，也不需要在远程桌面里切换输入法。原 noVNC 后端没有这项功能，中文请通过剪贴板粘贴。
+镜像内置 `115dl`。Compose 容器使用服务名 `browser115`，直接部署示例使用容器名 `115-docker`。以下命令会提示输入与桌面相同的密码：
 
 ```bash
-docker compose exec browser115 date
-docker compose exec browser115 sh -c 'ls /usr/share/locale/zh_CN/LC_MESSAGES | head'
-```
-
-## 添加下载接口
-
-在远程桌面里扫码登录 115 后，不必再打开桌面，也能通过网页或接口添加下载。打开 `http://127.0.0.1:1151/`（宿主机端口由 `API_PORT` 决定），用户名和密码与远程桌面相同。页面的输入框按粘贴的内容处理：
-
-- 115 分享链接（可带提取码）：列出分享内容，可以进入子文件夹，勾选后下载到 NAS。
-- 网盘路径，例如 `/电影/某文件夹`；也可以点“浏览网盘”从根目录开始选。网盘列表可按完成时间（文件进入网盘的时间）、名称或大小排序，点表头切换，手机上用排序下拉框；浏览网盘默认最新完成的在前，云下载结果和分享默认按名称，选择会记在当前浏览器里。
-- 磁力、ed2k、HTTP、FTP 链接，每行一个：先加入 115 云下载（离线下载）。115 在云下载完成前不能列出磁力里的文件，所以页面等任务完成后列出结果，再勾选要下载到 NAS 的内容；115 已有的资源通常几秒内完成。也可以勾选“云下载完成后，自动把整个任务下载到 NAS”。
-
-勾选的文件和文件夹直接下载到 NAS 下载目录；“下载整个文件夹”保留当前文件夹本身。页面顶部和“NAS 下载”列表显示进度、速度和剩余时间，数据来自 115 浏览器的传输列表；传输列表窗口关闭时改为显示下载记录，没有实时速度。
-
-实现方式：115 浏览器只在容器内的 `127.0.0.1:9222` 开放调试端口，Compose 不发布这个端口。接口通过它在一个 115 网盘后台标签页里调用 115 网页自己使用的离线和目录接口，以及 115 浏览器提供给网页的 `browserInterface.CreateDownloadTask`/`CreateSharedTask`；进度只读取传输列表页面已有的数据。因此文件仍由 115 浏览器的下载引擎下载，出现在它的传输列表里，保存到 `/opt/Downloads`。
-
-```bash
-# 链接 → 云下载，完成后自动下载到 NAS
-curl -u 115:密码 -H 'Content-Type: application/json' \
-  -d '{"links":"magnet:?xt=urn:btih:...","to_nas":true}' http://127.0.0.1:1151/api/offline
-# 网盘路径 → NAS（整个文件或文件夹）
-curl -u 115:密码 -H 'Content-Type: application/json' -d '{"path":"/电影/某文件夹"}' http://127.0.0.1:1151/api/download
-# 分享链接 → NAS（分享里的全部内容）；链接里没有提取码时加 "receive_code"
-curl -u 115:密码 -H 'Content-Type: application/json' \
-  -d '{"url":"https://115cdn.com/s/sw...?password=abcd"}' http://127.0.0.1:1151/api/share
-# 只下载部分内容：先列出目录（text 可以是网盘路径或分享链接；网盘目录可加 "sort": "time"|"name"|"size" 和 "asc"），
-# 再把选中条目的 n、is_dir 和 pc（网盘）或 sc（分享）放进 items
-curl -u 115:密码 -H 'Content-Type: application/json' -d '{"text":"/电影/某文件夹"}' http://127.0.0.1:1151/api/inspect
-curl -u 115:密码 -H 'Content-Type: application/json' -d '{"kind":"drive","cid":"0"}' http://127.0.0.1:1151/api/browse
-curl -u 115:密码 -H 'Content-Type: application/json' \
-  -d '{"items":[{"n":"a.mkv","pc":"...","is_dir":false}]}' http://127.0.0.1:1151/api/download
-# 列出全部接口（也可点页面右上角“命令行”查看，其中的示例会用你当前访问的地址）
-curl -u 用户:密码 http://127.0.0.1:1151/api/endpoints
-# 查询：云下载任务、已完成任务的内容、NAS 传输进度、登录状态
-curl -u 115:密码 http://127.0.0.1:1151/api/offline
-curl -u 115:密码 'http://127.0.0.1:1151/api/offline/content?hash=任务的 info_hash'
-curl -u 115:密码 http://127.0.0.1:1151/api/transfers
-curl -u 115:密码 http://127.0.0.1:1151/api/status
-```
-
-勾选自动下载的任务记录在 `/etc/115/115-downloads.json`，重建容器后继续跟踪。提交后的 10 分钟内每 10 秒查询一次 115 云下载列表，之后每分钟一次；任务完成并转存到网盘后开始下载到 NAS，已完成和失败的记录保留 7 天。
-
-返回 409 表示 115 未登录，或 115 要求完成安全验证（错误码 911），需要在远程桌面的 115 浏览器里操作一次；返回 503 表示 115 浏览器没有运行。接口使用 Basic 认证，连续失败 10 次后锁定 10 分钟；POST 只接受同源的 JSON 请求，防止其他网站借浏览器缓存的密码提交下载。发布方式与 1150 相同：保持回环绑定，远程使用 SSH 隧道或 HTTPS 反代，反代时保留 Host 头。
-
-镜像内置命令行客户端 `115dl`，调用同一套接口，用户名密码与本页相同：
-
-```bash
-# 容器内（无需密码，接口仍走回环认证时用 REMOTE_USER 的密码）
-docker exec -it 115-docker 115dl apis              # 列出所有命令与接口
+docker exec -it 115-docker 115dl apis
 docker exec -it 115-docker 115dl status
 docker exec -it 115-docker 115dl add 'magnet:?xt=urn:btih:...' --to-nas
-docker exec -it 115-docker 115dl browse --cid 0 --sort time
+docker exec -it 115-docker 115dl browse --cid 0 --sort time --desc
+docker exec -it 115-docker 115dl inspect '/电影/某文件夹'
 docker exec -it 115-docker 115dl download --path '/电影/某文件夹'
+docker exec -it 115-docker 115dl share 'https://115cdn.com/s/分享码' --code abcd
 docker exec -it 115-docker 115dl transfers
-# 远程使用时指定地址与密码（经隧道或反代）
-DOWNLOAD_API_URL=https://你的域名 DOWNLOAD_API_PASSWORD=密码 115dl status
+# Compose 部署的等价调用
+docker compose -f compose.yaml -f compose.registry.yaml exec browser115 115dl status
 ```
 
-连接与凭据取自参数或环境变量：`--url`/`DOWNLOAD_API_URL`（默认 `http://127.0.0.1:1151`）、`--user`/`DOWNLOAD_API_USER`（默认 `REMOTE_USER`）、`--password`/`DOWNLOAD_API_PASSWORD`（缺省时在终端提示输入）。`115dl raw GET /api/状态路径` 可直接调用任意接口，`--json` 输出原始结果。
-
-这些是 115 未公开的网页接口，按 115 浏览器 36.0.1 和 2026 年 10 月的 115 网页代码实现，115 更新后可能需要调整。不需要此功能时设置 `ENABLE_DOWNLOAD_API=false`，浏览器也不会开放调试端口，登录保持也随之关闭。
-
-## HTTPS 认证入口
-
-默认后端使用 `nginx/115-kasm.conf.example`，在同一宿主机 Nginx 的 http 上下文加载。替换域名、证书路径和上游端口，配置证书与续期，执行 `sudo nginx -t` 后重载 Nginx。1150 保持回环绑定。示例将 Authorization 与 WebSocket 升级头转发给 KasmVNC，由原生认证校验配置的用户名和长密码。
-
-回退后端使用原来的 `nginx/115.conf.example`，另外配置 htpasswd 长密码认证。切换后端时同步切换反代示例；两个独立 Basic 认证层不能使用不同凭据并覆盖同一个 Authorization 头。
-
-Nginx 若在容器中，将服务放到同一 Docker 网络，上游改为 `browser115:1150`。[Nginx WebSocket 文档](https://nginx.org/en/docs/http/websocket.html)
-
-## 维护和备份
+也可在有 Python 3 的访问端运行工程内客户端，连接自己的 HTTPS 入口或隧道：
 
 ```bash
-docker compose ps
-docker compose logs --tail=200 browser115
-docker compose stats --no-stream
-df -h data/downloads
-# 手动关闭浏览器后可从任务栏打开，或执行：
-docker compose exec -d browser115 /opt/115/115.sh
+python3 runtime/downloader/cli.py --url https://downloads.example.com --user 115 status
+python3 runtime/downloader/cli.py --url http://127.0.0.1:1151 --json transfers
 ```
 
-浏览器和桌面日志统一输出到容器日志，按每个 10 MB、最多 3 个轮转。健康检查验证 Kasm 原生认证 HTTP、X11 和 xfwm4；legacy 模式额外验证 RFB greeting，不验证账号、下载任务或网页。Docker 不会仅因 unhealthy 自动重启，应接入已有告警系统。
+连接参数支持 `--url` / `DOWNLOAD_API_URL`、`--user` / `DOWNLOAD_API_USER`、`--password` / `DOWNLOAD_API_PASSWORD`。默认地址为 `http://127.0.0.1:1151`，用户名默认使用 `REMOTE_USER` 或 `115`；没有传入密码时交互询问。自动化调用需提供凭据。`--json` 输出原始 JSON，`raw` 可调用任意接口。
 
-同一 profile 只能由一个实例使用。下载文件可能属于 root，可对下载目录设置共享组或默认 ACL，不使用 chmod 777，也不假设 PUID 和 PGID 能改变这个自建镜像的进程身份。
+### JSON API
 
-升级前关闭浏览器以落盘，再停止容器。默认目录布局下：
+页面右上角“命令行与接口”弹窗会根据 **当前页面地址**生成示例，不需要手动猜测 NAS 的映射端口。`GET /api/endpoints` 返回完整命令、接口与参数说明。
+
+| 方法 | 路径 | 功能 |
+| --- | --- | --- |
+| GET | `/api/status`、`/api/endpoints` | 浏览器与登录状态、接口清单 |
+| POST | `/api/inspect`、`/api/browse` | 识别输入、列出网盘或分享内容 |
+| POST / GET | `/api/offline` | 提交云下载链接 / 查询任务 |
+| GET | `/api/offline/content?hash=...` | 查询已完成云下载的内容 |
+| POST | `/api/download`、`/api/share` | 下载网盘或分享的全部或选中内容 |
+| GET | `/api/transfers`、`/api/local`、`/api/watch` | 传输进度、本地记录、自动下载等待任务 |
+
+以下示例中的 `curl -u 115` 会提示输入密码。NAS 映射为 11502 时，将示例地址改为 `http://NAS_IP:11502`。
 
 ```bash
-docker compose stop
-mkdir -p backups
-chmod 700 backups
-sudo tar -czf "backups/115-state-$(date +%Y%m%d-%H%M%S).tar.gz" \
-  .env compose.yaml compose.compat.yaml data/profile
-docker compose start
+curl -u 115 http://127.0.0.1:1151/api/status
+curl -u 115 -H 'Content-Type: application/json' \
+  -d '{"links":"magnet:?xt=urn:btih:...","to_nas":true}' \
+  http://127.0.0.1:1151/api/offline
+curl -u 115 -H 'Content-Type: application/json' \
+  -d '{"text":"/电影/某文件夹","sort":"time","asc":false}' \
+  http://127.0.0.1:1151/api/inspect
+curl -u 115 -H 'Content-Type: application/json' \
+  -d '{"path":"/电影/某文件夹"}' http://127.0.0.1:1151/api/download
+curl -u 115 -H 'Content-Type: application/json' \
+  -d '{"url":"https://115cdn.com/s/分享码","receive_code":"abcd"}' \
+  http://127.0.0.1:1151/api/share
 ```
 
-另备份整个工程，包含 Dockerfile、runtime、rootfs、vendor 与校验清单。下载文件使用独立快照或备份工具。profile 使用绝对路径时，备份实际目录。凭据备份加密并放在独立存储，定期验证恢复。
+只下载部分内容时，先列目录，再提交选中条目的 `items`：网盘条目使用 `n`、`pc`、`is_dir`；分享条目使用 `n`、`sc`、`is_dir`，调用分享下载时还需原分享链接与提取码。
 
-## 升级与回滚
+接口在容器内部通过回环 CDP 调用 115 网页与浏览器下载接口，不额外启动下载引擎。这些是 115 未公开的接口，上游变化可能需要调整。POST 接受 JSON 并校验 Origin；认证连续失败 10 次后锁定来源 10 分钟。409 通常表示未登录或需完成 115 安全验证，503 表示浏览器不可用。
 
-在当前镜像内切换回原后端，设置恰好 8 位字母数字密码，再执行：
+## 配置项
+
+`.env.example` 是 Compose 模板。表中“容器变量”用于群晖界面或 `docker run`，端口与目录变量用于 Compose。
+
+| Compose 变量 | 容器变量 | 默认值 / 用途 |
+| --- | --- | --- |
+| `VNC_PASSWORD` | `PASSWORD` | 必填；Kasm 8～128 位字母数字，legacy 恰好 8 位 |
+| `REMOTE_USER` / `REMOTE_BACKEND` | 同名 | `115` / `kasm`；后端可改为 `legacy` |
+| `ENABLE_DOWNLOAD_API` | 同名 | `true`；关闭后下载接口和登录保持均停止 |
+| — | `KEEP_115_LOGIN` | `true`；关闭自动保持登录 |
+| `AUTO_START` | 同名 | `true`；自动启动 115 |
+| `TZ` | 同名 | `Asia/Shanghai`，空值同样使用北京时间 |
+| `DISPLAY_WIDTH` / `DISPLAY_HEIGHT` | 同名 | `1600` / `900`；连接前的初始尺寸 |
+| `VNC_FPS` | 同名 | `30`；范围 1～60 |
+| `KASM_THREADS` | 同名 | `2`；范围 1～16 |
+| `KASM_WEBP_BUDGET` | 同名 | `0`；范围 0～100，每帧 WebP 编码时间比例 |
+| `BIND_IP` / `WEB_PORT` / `API_PORT` | — | `127.0.0.1` / `1150` / `1151`，宿主机地址与端口 |
+| `PROFILE_DIR` / `DOWNLOAD_DIR` | — | `./data/profile` / `./data/downloads`，支持绝对路径 |
+| `SHM_SIZE` / `MEM_LIMIT` / `CPU_LIMIT` | — | `1gb` / `4g` / `2.0` |
+| `IMAGE_115` | — | 未设置时：本地模式构建本地镜像，registry 模式拉取 `latest` |
+
+当前 Compose 没有转发 `KEEP_115_LOGIN`，仅在 `.env` 加这一项不会生效。需要关闭时，在自己的 Compose 覆盖文件中给 `browser115.environment` 增加 `KEEP_115_LOGIN: "false"`；NAS 界面或 docker run 直接设置容器变量即可。
+
+NAS CPU 较弱时可将 `VNC_FPS` 降为 15～20，并保持逻辑分辨率。带宽有限且 CPU 有余量时，可尝试 `KASM_WEBP_BUDGET=30` 后比较 CPU 和传输量。原生 Retina 模式、视频和大量动态内容都会增加编码负载；本工程的桌面传输不启用 GPU 视频编码。
+
+## 更新与维护
+
+### 检查镜像更新
+
+`latest` 只有在流水线运行验收成功后才更新；`build-<编号>` 和 `sha-<完整提交>` 是候选构建标签，需确认对应构建成功后再使用。
 
 ```bash
-# 本地构建模式
-docker compose -f compose.yaml -f compose.legacy.yaml up -d --build
-# 流水线镜像模式
+# 直接部署的容器
+python3 scripts/check-update.py --container 115-docker
+# Compose 自动命名的容器
+python3 scripts/check-update.py --container "$(docker compose -f compose.yaml -f compose.registry.yaml ps -q browser115)"
+# 群晖 SSH 使用 root 的 Docker 登录配置
+sudo /usr/bin/python3 scripts/check-update.py --docker /usr/local/bin/docker --container 115-docker --json
+```
+
+脚本查询同平台的远端 config digest，与**运行中容器**的 image ID 比较，不下载镜像层。退出码 0 表示最新，10 表示有更新，1 表示检查失败；可处理 manifest index 和 BuildKit 证明附件。
+
+群晖原生更新提醒受 Container Manager 版本与仓库支持情况影响。**私有 Harbor 即使使用 latest，也不能只依赖“更新可用”提示**；使用上述脚本直接确认。下载新镜像并不会让正在运行的容器自动换版本。
+
+### 更新容器
+
+Compose 镜像部署：
+
+```bash
+docker compose -f compose.yaml -f compose.registry.yaml pull
+docker compose -f compose.yaml -f compose.registry.yaml up -d --no-build
+docker compose -f compose.yaml -f compose.registry.yaml ps
+```
+
+本地构建部署执行 `docker compose up -d --build`。群晖直接创建的容器，在拉取新镜像后重新创建，沿用原有端口、凭据、挂载和资源配置。docker run 部署可先 `docker stop 115-docker`、`docker rm 115-docker`，再执行原创建命令；保存好创建参数后再操作。
+
+**保留现有 profile 和下载目录**，不要删除挂载数据。上述更新流程不自动保存旧容器或数据副本。如需回退，升级前自行保存旧镜像和配套 profile；旧镜像可能不能直接读取新版 Chromium 已升级的 profile。旧镜像确认不再使用后，可按明确 image ID 删除，避免全局清理其他服务的镜像。
+
+### 日常检查与后端回退
+
+```bash
+docker compose -f compose.yaml -f compose.registry.yaml logs --tail=100 browser115
+docker stats --no-stream
+docker compose -f compose.yaml -f compose.registry.yaml exec -e DISPLAY=:115 browser115 xrandr --current
+# 主动关闭浏览器后，从面板重新打开，或使用：
+docker compose -f compose.yaml -f compose.registry.yaml exec -d browser115 /opt/115/115.sh
+```
+
+健康检查覆盖认证 HTTP、X11 和窗口管理器；它不确认 115 账号、云下载或文件是否完成。Docker 不会仅因 unhealthy 自动重启；关键桌面服务退出时容器会退出，再由重启策略恢复。
+
+两种桌面后端已包含在同一镜像中。切换 legacy 时先将密码改为**恰好 8 位英文字母或数字**，再执行：
+
+```bash
 docker compose -f compose.yaml -f compose.registry.yaml -f compose.legacy.yaml up -d --no-build
 ```
 
-也可以在 `.env` 中设置 `REMOTE_BACKEND=legacy`，或在群晖 Container Manager 重新创建容器时设置同名环境变量。恢复 Kasm 时设置 `REMOTE_BACKEND=kasm` 并去掉 legacy 覆盖文件。两种后端使用同一版本 115 和同一数据卷，不同时打开同一 profile。更换镜像版本仍需按下文备份 profile。
+本地构建省略 registry 文件并使用 `--build`。恢复 Kasm 时将 `REMOTE_BACKEND` 设为 `kasm` 并移除 legacy 覆盖文件。后端切换沿用同一数据卷，不能同时启动两个实例；legacy 不使用 Kasm 原生 Basic 认证，远程入口按 [nginx/115.conf.example](nginx/115.conf.example) 配置。
 
+## 构建与流水线
 
-主题或脚本更新后执行 `docker compose up -d --build`。更新软件版本时，下载候选归档并记录来源和 SHA256，同步 vendor/manifest.json、SHA256SUMS、Dockerfile 归档名称和本地镜像标签；构建不自动跟随 master 或 latest。先在独立 profile 上验证。
-
-更新前可保存旧镜像：
-
-```bash
-docker image tag 115-browser-local:36.0.1 115-browser-local:before-change
-```
-
-回滚需停止容器并保留当前 profile，再恢复升级前的 profile 和工程配置。新版 Chromium 可能升级 profile 格式，镜像和 profile 必须配套恢复。已有旧镜像时，将 `.env` 中 IMAGE_115 改为旧标签，执行 `docker compose up -d --no-build --pull never`；此时不要加 --build，以免新代码覆盖旧镜像。
-
-归档被删除后，`python3 scripts/vendor.py --fetch` 可按锁定 URL 下载并校验，不改变版本；校验失败会拒绝文件。
-
-## OneDev 流水线与 Harbor 镜像
-
-代码仓库为 `ssh://one.devshuai.com/shuai-toys/115-docker.git`，镜像为 `registry.devshuai.com/shuai-repo/115-docker`。所有构建定义和验收脚本均在当前工程，不引用外部流水线模板。
+GitHub：[devShuai/115-docker](https://github.com/devShuai/115-docker)。OneDev：`ssh://one.devshuai.com/shuai-toys/115-docker.git`。镜像仓库：`registry.devshuai.com/shuai-repo/115-docker`。
 
 `.onedev-buildspec.yml` 包含两个作业：
 
-- `validate`：所有分支更新和 PR 更新触发，校验 vendor 的 SHA256、Shell 语法及配置和进程管理测试。
-- `publish-image`：main 更新触发，依赖 validate 成功。构建 linux/amd64 镜像并推送 `build-<构建编号>` 和 `sha-<完整提交哈希>`；再从 Harbor 拉取该镜像，启动桌面和 115 浏览器，依次验证两种后端的健康与真实网页连接、Kasm 原生认证和未认证拒绝、原后端 RFB 认证、四种实际分辨率、最大化测试网页布局与静态/动画性能。随后发布 `.ci-artifacts/**` 中的 JSON、截图和诊断日志。成功后将同一镜像发布为 `latest`，并输出 manifest。
+- **validate**：分支与 PR 更新触发，检查固定归档、Shell 语法、Python 代码和运行配置测试。
+- **publish-image**：main 更新触发，依赖 validate 成功；构建 amd64 候选镜像，运行两种后端的真实桌面与性能验收，发布结果和截图，通过后再更新 latest。
 
-验收失败时不更新 latest；失败候选仍保留在构建编号标签，便于诊断。生产部署默认跟踪 `latest`，同时保留 `build-<构建编号>` 和 `sha-<完整提交哈希>` 用于回退。发布作业使用同一 sequentialGroup；应让其使用同一个明确的执行器，避免并发覆盖 latest。重跑旧提交会再次发布该旧提交，回滚或重跑时需留意。
+执行器需要 Docker、Buildx，并启用 **Enable Buildx Image Build** 和 **Enable Buildx Image Tools**。OneDev Job Secrets 使用 `registry-username`、`registry-password`，授权给可信 main 发布作业；Harbor 的 `shuai-repo` 项目需允许该账号 Pull/Push。执行器须能访问 Docker Hub 与 Harbor，应用安装阶段不需要 apt 网络。
 
-执行器命令容器默认只有 64 MiB `/dev/shm`，验收中的两个 Chromium 进程使用 `--disable-dev-shm-usage`，通过临时目录进行内存映射，避免大分辨率时卡住。该参数只在 CI 测试启动器中设置；实际部署仍使用 Compose 的 1 GiB `shm_size`。性能报告记录这一测试条件。
+流水线覆盖实际 1024×768、1280×720、1920×1080、1600×900 分辨率，模拟 125%、150%、200% DPR，核对 canvas、X11 与鼠标位置；另检查认证、中文界面、时区、下载接口和登录恢复。静态/动画对比使用同一场景，结果位于 `.ci-artifacts/`。CPU 100% 表示一个核心，稀疏像素采样不代表渲染 FPS，也不能代替实际多任务测试。
 
-首次使用需在 OneDev 和 Harbor 准备以下设置：
+发布作业串行更新 latest。重跑旧提交也会重新发布旧版本，操作前核对提交。CI 的 Chromium 使用 `--disable-dev-shm-usage` 适配执行器默认 64 MiB 共享内存，生产 Compose 仍配置 1 GiB。
 
-1. Harbor 中存在 `shuai-repo` 项目，推送账号拥有该项目 Pull/Push 权限；发布作业还需 Pull 权限才能验收。
-2. OneDev 本项目或父项目的 Settings → Build → Job Secrets 包含 `registry-username` 和 `registry-password`。用户名也通过 Secret 引用，可支持 Harbor robot 账号中的 `$`。两个 Secret 的 Authorization 设为 `on branch "main"`，不要写入 Git 或镜像。[OneDev Secret 文档](https://docs.onedev.io/tutorials/cicd/job-secrets)
-3. 有可运行 amd64 容器的 Server Docker Executor 或 Remote Docker Executor，安装 Docker 和 Buildx，并启用 **Enable Buildx Image Build** 和 **Enable Buildx Image Tools**，后者用于验收后更新 latest 及检查 manifest。自动发现的执行器默认不允许这些步骤。具备这两项能力的执行器应限制到本项目 main 上的可信 publish-image 作业；validate 可使用单独的普通 Docker 执行器。选择现有合适的执行器，需要固定名称时在作业里设置 jobExecutor。[OneDev 镜像构建设置](https://docs.onedev.io/tutorials/cicd/build-docker-image)
-4. 执行器可访问 Docker Hub 和 Harbor；系统安装阶段无需 Debian 软件源，信任 Harbor 的 TLS 证书。运行验收会执行 openssl 的 legacy DES provider，仅用于 VNC 协议认证；没有修改 TLS 验证。
+### 工程结构
 
-推送 main 后，在 OneDev 的 Builds / Pipeline 查看这两个作业。首次完成前不能将候选镜像视为已验收。若安装的 OneDev 不支持 buildspec version 53，应先通过其构建编辑器确认兼容版本；此文件采用当前官方的 type 字段格式。
-
-目标 Docker 主机使用流水线镜像部署：
-
-```bash
-cp .env.example .env
-# 编辑 .env：设置 VNC_PASSWORD；IMAGE_115 留空不设置，或显式设置如下
-# IMAGE_115=registry.devshuai.com/shuai-repo/115-docker:latest
-mkdir -p data/profile data/downloads
-docker login registry.devshuai.com
-docker compose -f compose.yaml -f compose.registry.yaml pull
-docker compose -f compose.yaml -f compose.registry.yaml up -d --no-build
+```text
+Dockerfile / compose*.yaml      构建与部署
+.env.example                  Compose 配置模板
+.onedev-buildspec.yml          OneDev 验证与镜像发布
+runtime/                      入口、进程管理、浏览器配置与健康检查
+  downloader/                 下载页面、JSON API、CDP、登录保持、115dl
+  web/ kasmvnc/ novnc/         中文客户端、DPI 适配、原后端配置
+rootfs/                       Xfce 设置、主题、桌面快捷方式与壁纸
+vendor/                       固定安装包、源码归档、manifest 和 SHA256SUMS
+scripts/                      归档校验、更新检查、桌面与性能验收
+tests/                        配置、协议、下载接口与登录保持测试
+nginx/                        两种后端的 HTTPS 反代示例
+THIRD_PARTY.md                 第三方组件来源与许可
 ```
 
-私有 Harbor 需要先登录；登录信息由 Docker 凭据配置管理。后续命令保持相同的 -f 参数。registry 覆盖文件设置 pull_policy 为 always；本地构建模式不加此覆盖文件。已有 `.env` 若设置了本地镜像或 `build-<number>`，需改为上面的 `latest` 地址。`latest` 发布或拉取后，正在运行的容器不会自行替换；更新仍需重新创建容器。
-
-### 检查更新
-
-在 Docker 宿主机运行工程内脚本（Python 3 标准库，无需额外依赖）：
-
-```bash
-python3 scripts/check-update.py --container 115-docker
-# Compose 自动命名的容器可直接使用其 ID：
-python3 scripts/check-update.py --container "$(docker compose -f compose.yaml -f compose.registry.yaml ps -q browser115)"
-# 群晖 sudo 部署时使用同一 root Docker 登录配置：
-sudo python3 scripts/check-update.py --docker /usr/local/bin/docker --container 115-docker
-```
-
-脚本通过 Docker 已有登录信息查询仓库，比较**运行中容器**的 image ID 与对应平台远端镜像的 config digest，不下载镜像层。已缓存新镜像、manifest index 与平台 manifest digest 不同、BuildKit 证明附件均不会造成误判。退出码 `0` 表示最新、`10` 表示有更新、`1` 表示检查失败（不等同于无更新）；`--json` 可供管理脚本读取。默认只检查，更新操作由管理员执行。
-
-更新前记录当前镜像 ID 和成功构建标签，停止容器并备份 profile，再拉取和重建：
-
-```bash
-docker compose -f compose.yaml -f compose.registry.yaml stop
-tar -czf profile-before-update.tar.gz -C data profile  # 自定义 PROFILE_DIR 时替换路径
-docker compose -f compose.yaml -f compose.registry.yaml pull
-docker compose -f compose.yaml -f compose.registry.yaml up -d --no-build
-```
-
-群晖 Container Manager 直接创建的容器，在保存挂载、端口及环境设置后重新创建为 `latest`；保留旧容器但关闭其自动重启，避免端口和 profile 冲突。回滚将 IMAGE_115 改为旧的成功标签或 digest，重新 pull 和 up；仍需先保留当前 profile 并恢复与旧镜像配套的 profile 备份。
-
-### 群晖 Container Manager 更新
-
-群晖 NAS 使用 Container Manager 自带的镜像管理和更新检查。正式容器使用 `registry.devshuai.com/shuai-repo/115-docker:latest`；仓库 `latest` 仅在流水线验收成功后更新，同时保留成功构建编号和提交标签供回退。更新服务无需在 NAS 上另外安装。
-
-检查镜像更新并下载后，仍需重新创建或更新正式容器才能运行新镜像。操作前停止容器并备份浏览器 profile，保留旧容器和旧镜像，关闭旧容器的自动重启。新容器沿用原有端口、环境变量、profile 和下载目录挂载；同一个 profile 不要同时启动两个容器。
-
-回退时停止新容器并另存当前 profile，再恢复旧版配套的 profile 和旧容器。下载文件保留在原目录。独立网页管理服务已移除；之前生成的容器和数据备份可继续保留用于人工回退。
-
-启动前仍会检查并清理失效的 X11 锁和 socket，支持容器重启；检测到仍在运行的 X 服务时拒绝清理。
-
-## 验证与兼容
+本地代码检查：
 
 ```bash
 python3 scripts/vendor.py
 python3 -m unittest discover -s tests -v
 bash -n runtime/*.sh scripts/ci-smoke.sh
-docker compose config --quiet
-docker compose build
 ```
 
-启动管理测试需要 Bash 4.3 或更新版本；Linux 镜像满足要求，macOS 默认旧 Bash 会跳过这部分测试。TEST_BASH 可指定本机已有的新版本。配置仍需在目标 Docker 主机完成完整构建与运行验收。
+启动管理测试需要 Bash 4.3+，macOS 系统旧 Bash 会跳过相应测试，完整桌面验收在 Linux 镜像中执行。软件升级需更新固定归档、manifest、SHA256SUMS 与引用版本。[第三方来源与许可](THIRD_PARTY.md)
 
-Compose 使用 bridge 网络、no-new-privileges 和默认 seccomp。浏览器保留证书校验与默认站点隔离，当前仍采用 root 和 --no-sandbox，供可信人员操作专用桌面。不挂载 Docker socket、宿主机根目录或额外敏感目录。
+## 排错
 
-启动参数使用 `--test-type` 跳过 Chromium 的启动提示条，消除 `--no-sandbox` 的“不受支持的命令行标记”提示；这不会启用浏览器 sandbox。书签栏默认隐藏，已有 profile 中用户自行设置的显示状态继续保留，可在浏览器中按 `Ctrl+Shift+B` 切换。[Chromium 125 启动提示处理源码](https://github.com/chromium/chromium/blob/125.0.6422.60/chrome/browser/ui/startup/infobar_utils.cc)
+| 现象 | 检查方式 |
+| --- | --- |
+| 密码格式报错 | Compose 设置 `VNC_PASSWORD`，容器界面设置 `PASSWORD`；Kasm 8～128 位，legacy 恰好 8 位，均只允许英文字母数字 |
+| 下载页面无法访问 | 确认 1151 已映射、`ENABLE_DOWNLOAD_API=true`，并使用宿主机映射后的端口 |
+| API 返回 409 / 503 | 在远程桌面处理扫码或安全验证 / 重新打开 115 浏览器 |
+| 重建后看不到原数据 | 检查宿主机目录是否沿用原路径，尤其是 `/etc/115` 挂载 |
+| 登录恢复未成功 | 稍等几秒，确认下载接口与 KEEP_115_LOGIN 已开启；服务端使登录失效时重新扫码 |
+| 分辨率不跟随窗口 | 网页 Resize 使用 Remote；检查是否有第二个访问端反复改变尺寸 |
+| XDG_RUNTIME_DIR 不存在 | 使用包含入口修复的镜像，保留默认入口；无需持久挂载 `/run/115` |
+| 黑屏或退出 | 先查看容器日志和健康状态，检查共享内存与密码；不要直接改成 privileged |
 
-只有日志显示确切 seccomp 兼容问题时才执行：
+浏览器目前以 root 和 `--no-sandbox` 运行，`--test-type` 仅隐藏启动提示条，不会启用 sandbox。保持容器隔离，不挂载宿主机敏感目录。只有日志明确指向 seccomp 兼容问题时才使用 `compose.compat.yaml`；它会降低系统调用隔离，后续操作需携带相同覆盖文件。
 
-```bash
-docker compose -f compose.yaml -f compose.compat.yaml up -d --build
-```
+### 群晖 inotify 错误
 
-后续维护携带相同的 -f 参数。该配置移除系统调用过滤，降低隔离；一般黑屏不通过 privileged 或 host 网络解决。[Docker seccomp 文档](https://docs.docker.com/engine/security/seccomp/)
-
-## 群晖启动报错处理
-
-在 Container Manager 界面直接创建容器时，环境变量名是 **`PASSWORD`**，Kasm 模式值为 8～128 位英文字母或数字（推荐至少 16 位），并设置 `REMOTE_USER=115`；legacy 模式恰好 8 位。`VNC_PASSWORD` 是本项目 Compose 使用的 `.env` 变量，Compose 会将其映射为容器的 `PASSWORD`。两者不能在直接创建容器时混用。修改环境变量后重新创建容器，并继续挂载原来的 `/etc/115` 和 `/opt/Downloads` 数据目录；仅重新启动旧容器不会更新其环境配置。时区不需要手动添加，未设置或留空时使用 `Asia/Shanghai`。使用添加下载接口时，在端口设置中把容器的 1151 映射到 NAS 端口。
-
-`XDG_RUNTIME_DIR "/run/115" not available` 是旧镜像的启动顺序问题；使用包含 `runtime/entrypoint.sh` 修复的镜像。无需把 `/run/115` 映射到 NAS 持久目录，也不要在 Container Manager 中覆盖镜像的启动命令。
-
-`Cannot set up inotify ... No space left on device` 表示添加文件监听失败，通常为同一宿主机用户的 inotify 配额耗尽，也可能是内核资源不足，不能仅据此判定磁盘已满。[Linux inotify 错误说明](https://man7.org/linux/man-pages/man2/inotify_add_watch.2.html)
-
-通过 SSH 登录 **群晖宿主机**，先检查磁盘、inode 与监听配额：
+`Cannot set up inotify ... No space left on device` 可能是宿主机共享的文件监听配额耗尽，不能只据此判断磁盘已满。先在 NAS 检查：
 
 ```bash
 df -h / /volume1
@@ -416,7 +391,7 @@ df -i / /volume1
 sysctl fs.inotify.max_user_watches fs.inotify.max_user_instances
 ```
 
-关闭不必要的文件监听进程或容器；如果配额确实不足，可以先临时提高下限，同时保留已有的更高值：
+确认监听配额不足后，可临时提高下限，保留已有更高值：
 
 ```bash
 watch_limit=$(sysctl -n fs.inotify.max_user_watches)
@@ -427,17 +402,4 @@ sudo sysctl -w "fs.inotify.max_user_watches=$watch_limit" \
   "fs.inotify.max_user_instances=$instance_limit"
 ```
 
-这些是宿主机共享内核参数，不要写入 Compose 的容器 sysctls。临时设置在宿主机重启后可能失效；确认有效后，在 DSM 任务计划新增开机触发任务，以 root 执行上述检查并提高下限的脚本（任务中省略 sudo）。提高上限不会预先分配全部监听内存，实际内存使用随监听数量增加。若已经高于这些下限，继续排查大量监听的进程和内核内存情况，避免反复提高参数。
-
-## 上线验收
-
-- 自建镜像构建成功，账号配置没有进入镜像。
-- 深色桌面、任务栏、图标和壁纸正常，中文无乱码；桌面菜单、文件对话框和网页客户端设置均为中文。
-- `date` 与任务栏时钟为北京时间（或设置的 TZ），用访问端输入法能在 115 搜索框输入中文。
-- 本机或 SSH 连接正常，未授权网络无法直连 1150，HTTPS 入口要求认证。
-- 扫码和测试下载成功，宿主机能找到文件。
-- 添加下载页面需要认证；提交一个测试链接，云下载完成后能列出内容、勾选下载到 NAS，页面显示下载进度。
-- 重建后文件与浏览器配置保留，登录仍受服务端策略影响。
-- 改变窗口并进出全屏，xrandr 确认实际尺寸变化，115 最大化窗口跟随。
-- 关键桌面服务故障触发容器恢复，主动关闭浏览器可从任务栏重新打开。
-- 备份可恢复到独立实例，回滚恢复配套旧镜像和 profile。
+这些是宿主机参数，不写入容器 sysctls。临时设置重启后可能失效；确认改善后再通过 DSM 开机任务持久设置。已高于下限时，应排查大量监听的进程与内核资源，避免反复提高上限。
