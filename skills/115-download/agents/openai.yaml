@@ -1,0 +1,4 @@
+interface:
+  display_name: "115 下载助手"
+  short_description: "浏览网盘与分享，提交云下载或 NAS 下载，并跟踪任务完成状态"
+  default_prompt: "使用 $115-download 查看下载任务，并按我的选择下载到 NAS。"

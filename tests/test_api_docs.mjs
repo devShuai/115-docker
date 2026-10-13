@@ -48,6 +48,7 @@ test('page renders every endpoint, request schema, response fields and authentic
   }
   assert.ok(elements.get('cli-examples').textContent.includes("DOWNLOAD_API_URL='https://downloads.example.test'"));
   assert.ok(elements.get('cli-examples').textContent.includes('--no-input --json status'));
+  assert.ok(elements.get('skill-install').textContent.includes('skill-installer.py | python3 -'));
   assert.equal(elements.get('cli-resources').children[0].attributes.href, 'https://downloads.example.test/115dl.py');
 });
 test('documentation renders literal values without executing HTML and recovers after a request failure', async () => {

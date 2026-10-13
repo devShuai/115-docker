@@ -24,11 +24,19 @@ jobs:
       - name: Verify dependencies and source
         run: |
           python3 scripts/vendor.py
+          python3 scripts/build-agent-skill.py --check --zip .ci-artifacts/115-download.skill.zip
           bash -n runtime/*.sh scripts/ci-smoke.sh
           python3 -m unittest discover -s tests -v
           python3 -m compileall -q runtime scripts
           node --check runtime/downloader/static/app.js
           node --test tests/*.mjs
+      - name: Upload installable agent skill
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: 115-download-skill
+          path: .ci-artifacts/115-download.skill.zip
+          if-no-files-found: error
+          retention-days: 90
 
   image:
     needs: validate

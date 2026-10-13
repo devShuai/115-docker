@@ -139,7 +139,7 @@ FIELDS = {
     "status": {"browser": "浏览器是否可用 boolean", "logged_in": "boolean 或 null，当前 115 登录状态",
                "user_id": "登录用户 ID，可能省略"},
     "apis": {"version": "文档版本", "endpoints": "命令、方法、参数 schema、约束、示例和返回字段",
-             "errors / resources / auth / limits / installation": "通用错误、下载资源、认证、请求限制与安装命令"},
+             "errors / resources / auth / limits / installation / skill_installation": "通用错误、下载资源、认证、请求限制与客户端/技能安装命令"},
     "inspect": {**LIST_FIELDS, "links": "kind=links 时的已验证、去重链接数组"},
     "browse": LIST_FIELDS,
     "offline": {"tasks[]": "hash、name、status（中文）、state（failed/waiting/downloading/done）、text",
@@ -183,7 +183,16 @@ def reference():
     return {"version": "1", "auth": "HTTP Basic；用户名/密码与远程桌面相同，所有资源均需认证",
             "limits": "容器端口 1151；POST application/json，最大 64 KiB；不提供跨域调用",
             "endpoints": ENDPOINTS, "errors": ERRORS, "resources": RESOURCES,
-            "installation": install_example("__DOWNLOAD_API_URL__")}
+            "installation": install_example("__DOWNLOAD_API_URL__"),
+            "skill_installation": skill_install_example()}
+
+
+def skill_install_example():
+    return ('# 安装 115-download skill（Python 3.8+，无需 NAS 凭据）\n'
+            'curl -fsSL https://raw.githubusercontent.com/devShuai/115-docker/main/runtime/downloader/skill-installer.py | python3 -\n'
+            '# 更新已安装技能：在 python3 - 后加 --update\n'
+            '# 默认安装到 $CODEX_HOME/skills 或 ~/.codex/skills；--skills-dir 可指定其他 agent 的目录\n'
+            '# 在 agent 环境配置 DOWNLOAD_API_URL、DOWNLOAD_API_USER 和密码环境/文件，再使用 $115-download')
 
 
 def object_schema(properties, required=()):
@@ -222,7 +231,7 @@ TRANSFER = object_schema({"id": STRING, "name": STRING, "state": {"type": "strin
     "error": STRING, "ended": STRING})
 RESPONSE_SCHEMAS = {
     "status": object_schema({"browser": BOOL, "logged_in": {"type": ["boolean", "null"]}, "user_id": STRING}),
-    "apis": object_schema({"version": STRING, "auth": STRING, "limits": STRING, "installation": STRING,
+    "apis": object_schema({"version": STRING, "auth": STRING, "limits": STRING, "installation": STRING, "skill_installation": STRING,
         "endpoints": array_schema({"type": "object"}), "errors": array_schema(object_schema({"status": INT, "desc": STRING})),
         "resources": array_schema(object_schema({"path": STRING, "summary": STRING}))}),
     "inspect": {"oneOf": [DIRECTORY, object_schema({"kind": {"const": "links"}, "links": array_schema(STRING)}, ["kind", "links"])]},
@@ -305,6 +314,8 @@ def install_example(base_url):
 
 def agent_guide():
     sections = ["# 115 下载 agent 接口", reference()["auth"], reference()["limits"],
+        "## 安装 Agent Skill", "技能包含完整 API 参考、OpenAPI 和独立客户端，安装不需要 NAS 凭据。",
+        "```bash\n" + skill_install_example() + "\n```",
         "## 安装与非交互调用", "将下面 URL 替换为下载页面的 origin（如 http://NAS_IP:11502 或 HTTPS 域名）。",
         "```bash\n" + install_example("http://NAS_IP:11502") + "\n```",
         "Windows 可下载 /115dl.py 后用 python 115dl.py 调用，无需安装第三方库。",

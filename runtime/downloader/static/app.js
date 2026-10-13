@@ -846,6 +846,7 @@ function endpointDetail(item) {
 async function loadEndpoints() {
   try {
     const data = await api("api/endpoints");
+    $("skill-install").textContent = data.skill_installation;
     $("cli-examples").textContent = data.installation.replace("__DOWNLOAD_API_URL__", base.replace(/\/$/, "").replaceAll("'", "'\"'\"'"));
     $("cli-resources").replaceChildren(...data.resources.map((item) =>
       h("a", {href: base + item.path.slice(1), text: item.path + " · " + item.summary})));

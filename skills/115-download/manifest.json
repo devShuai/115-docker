@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "name": "115-download",
+  "files": {
+    "SKILL.md": {
+      "sha256": "9f0f03d03bf4a531cb39fec9ff10a4acfe1cda2f98674709c30c9fee110555d0",
+      "size": 4725
+    },
+    "agents/openai.yaml": {
+      "sha256": "0d13e64cf62eba726f51e93a80cbc14887da2ec6eb4eb8930bc83959de3e2b08",
+      "size": 250
+    },
+    "scripts/115dl.py": {
+      "sha256": "8171187ae041e351ea9b62c428430a937b5bcda70930a06a06b3ed8e00d305cc",
+      "size": 14790
+    },
+    "references/api.md": {
+      "sha256": "73eec04bce6ab0cd2c0171948fcfe3a8f096acbd7aa8e6e2128668edd36f848e",
+      "size": 19777
+    },
+    "references/openapi.json": {
+      "sha256": "d2edff695fb6385a0c0479f21467ce2c09d67ab1987dae16c3e52205d2ae0d9c",
+      "size": 148286
+    }
+  }
+}

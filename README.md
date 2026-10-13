@@ -227,6 +227,38 @@ python3 runtime/downloader/cli.py --url http://127.0.0.1:1151 --json transfers
 
 ### agent 安装与调用
 
+下载接口已封装为标准 `115-download` skill，包含 `SKILL.md`、agent 元数据、独立 CLI、全部 12 个操作的接口参考和 OpenAPI 3.1 文件。源码位于 [skills/115-download](skills/115-download)，安装时不需要 Docker、pip、Git 或 NAS 凭据，仅需 Python 3.8+；下面一键命令还使用 curl。
+
+**一键安装到 Codex：**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/devShuai/115-docker/main/runtime/downloader/skill-installer.py | python3 -
+```
+
+默认目录为 `$CODEX_HOME/skills/115-download`，未设置 `CODEX_HOME` 时为 `~/.codex/skills/115-download`。安装器锁定 GitHub 提交并验证每个文件的 SHA-256，全部成功后才写入目录；技能内容不包含任何真实账号凭据。更新已安装技能使用同一命令末尾加 `--update`，更新保留用户新增文件；下载或校验失败时现有技能不变。
+
+其他支持 `SKILL.md` 的 agent 可指定其技能发现目录；例如配置在 `~/.claude/skills` 的环境：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/devShuai/115-docker/main/runtime/downloader/skill-installer.py | python3 - --skills-dir "$HOME/.claude/skills"
+# 更新
+curl -fsSL https://raw.githubusercontent.com/devShuai/115-docker/main/runtime/downloader/skill-installer.py | python3 - --update
+# 从当前工程离线安装，无需联网
+python3 runtime/downloader/skill-installer.py --source .
+```
+
+Windows 可下载 `runtime/downloader/skill-installer.py` 后执行 `python skill-installer.py`；自定义目录和更新参数相同。
+
+在 agent 的环境或密钥配置中提供 `DOWNLOAD_API_URL`（下载页面地址）、`DOWNLOAD_API_USER`（桌面用户名），以及 `DOWNLOAD_API_PASSWORD` 或 `DOWNLOAD_API_PASSWORD_FILE`（桌面密码文件）。安装后若当前 agent 尚未发现技能，开启新会话，再使用 `$115-download`，例如：“使用 $115-download 列出网盘根目录”或“使用 $115-download 查看 NAS 下载进度”。提交下载需给出用户要下载的链接、路径或选择范围。
+
+技能通过 `python3 <技能目录>/scripts/115dl.py --no-input --json COMMAND` 调用，无需安装全局 `115dl`。完整参数和示例见 [技能接口参考](skills/115-download/references/api.md)。客户端和文档由 `python3 scripts/build-agent-skill.py` 从现有实现生成；两条流水线检查同步状态并提供 `115-download.skill.zip` 产物，也可在本地运行：
+
+```bash
+python3 scripts/build-agent-skill.py --check --zip .ci-artifacts/115-download.skill.zip
+```
+
+**只安装独立 CLI：**
+
 下载页面右上角“命令行与接口”提供按当前地址生成的安装命令。客户端下载自正在运行的容器，与服务端版本一致；仅使用 Python 3.8+ 标准库，无需 pip、Docker 或 sudo。Linux/macOS 示例：
 
 ```bash
