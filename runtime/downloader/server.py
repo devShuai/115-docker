@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import sys
 import threading
 import time
@@ -169,6 +170,25 @@ def history_transfer(row, index):
             "total": human_size(total) if total > 0 else "", "folder": False, "error": "", "ended": ended}
 
 
+def live_transfers(live, recorded):
+    """Correct lagging native rows only with the same committed download ID and filename."""
+    completed = {(str(row["id"]), row["name"]): row for row in recorded
+                 if row.get("id") is not None and row.get("key") == "done"}
+    items = []
+    for raw in live:
+        item = transfer_view(raw)
+        row = completed.get((item["id"], item["name"]))
+        # Keep explicit hash verification and failures visible. A file on disk
+        # or a similarly named historical download is not completion evidence.
+        if row and item["state"] in ("downloading", "waiting", "paused"):
+            item.update(state="done", progress=1.0, speed="", remain=0,
+                        received=human_size(row["received"] or 0),
+                        total=human_size(row["total"]) if row["total"] else "",
+                        ended=history_transfer(row, 0)["ended"])
+        items.append(item)
+    return items
+
+
 def transfers_view(items, live):
     groups = {"downloading": 0, "verifying": 0, "waiting": 1, "paused": 2}
     if live:
@@ -259,7 +279,11 @@ class App:
             except (client.BrowserUnavailable, RuntimeError, OSError):
                 live = None
             if live is not None:
-                return transfers_view([transfer_view(item) for item in live], True)
+                try:
+                    rows = history.recent_downloads(self.profile_dir, limit=100)
+                except (sqlite3.Error, OSError):
+                    rows = []  # Rotating history must not break a working native list.
+                return transfers_view(live_transfers(live, rows), True)
             rows = history.recent_downloads(self.profile_dir)
             return transfers_view([history_transfer(row, index) for index, row in enumerate(rows)], False)
         if path == "/api/local":

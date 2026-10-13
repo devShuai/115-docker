@@ -17,12 +17,12 @@ def recent_downloads(profile_dir, limit=30):
     connection = sqlite3.connect(f"file:{database}?mode=ro&immutable=1", uri=True)
     try:
         rows = connection.execute(
-            "SELECT target_path, received_bytes, total_bytes, state, start_time, end_time "
+            "SELECT id, target_path, received_bytes, total_bytes, state, start_time, end_time "
             "FROM downloads ORDER BY start_time DESC LIMIT ?", (limit,)).fetchall()
     finally:
         connection.close()
-    return [{"name": Path(target).name or target, "path": target, "received": received,
+    return [{"id": identity, "name": Path(target).name or target, "path": target, "received": received,
              "total": total, "state": STATES.get(state, str(state)), "key": KEYS.get(state, "failed"),
              "started": int(start / 1_000_000 - _WINDOWS_EPOCH_OFFSET) if start else None,
              "finished": int(end / 1_000_000 - _WINDOWS_EPOCH_OFFSET) if end else None}
-            for target, received, total, state, start, end in rows]
+            for identity, target, received, total, state, start, end in rows]

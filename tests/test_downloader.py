@@ -9,6 +9,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from urllib.error import URLError
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -144,10 +145,10 @@ class HistoryTests(unittest.TestCase):
             database = Path(directory) / "Default/HistoryEx"
             database.parent.mkdir()
             connection = sqlite3.connect(database)
-            connection.execute("CREATE TABLE downloads (target_path TEXT, received_bytes INT, total_bytes INT, "
+            connection.execute("CREATE TABLE downloads (id INTEGER PRIMARY KEY, target_path TEXT, received_bytes INT, total_bytes INT, "
                                "state INT, start_time INT, end_time INT)")
             start = (1_700_000_000 + 11644473600) * 1_000_000
-            connection.executemany("INSERT INTO downloads VALUES (?,?,?,?,?,?)", [
+            connection.executemany("INSERT INTO downloads (target_path,received_bytes,total_bytes,state,start_time,end_time) VALUES (?,?,?,?,?,?)", [
                 ("/opt/Downloads/old.iso", 5, 5, 1, start, start + 1_000_000),
                 ("/opt/Downloads/new.mkv", 2, 10, 0, start + 60_000_000, 0)])
             connection.commit()
@@ -486,6 +487,14 @@ class ServerCloud:
 
 
 class ServerTests(unittest.TestCase):
+    def test_a_busy_history_does_not_break_live_progress(self):
+        self.cloud.live = [{"id": "1", "name": "test.bin", "status": 2, "progress": 0}]
+        with patch.object(history, "recent_downloads", side_effect=sqlite3.OperationalError("database is locked")):
+            status, _, body = self.request("GET", "/api/transfers")
+        self.assertEqual(status, 200)
+        item = json.loads(body)["items"][0]
+        self.assertEqual((item["state"], item["progress"]), ("done", 1))
+
     def setUp(self):
         self.cloud, self.watcher = ServerCloud(), FakeWatcher()
         self.temporary = tempfile.TemporaryDirectory()
@@ -639,6 +648,20 @@ class ServerTests(unittest.TestCase):
 
 
 class ViewTests(unittest.TestCase):
+    def test_completed_history_corrects_stale_native_state_without_matching_other_tasks(self):
+        row = {"id": 5, "name": "test.bin", "received": 1024, "total": 1024,
+               "key": "done", "finished": 1700000000}
+        live = {"id": 5, "name": "test.bin", "status": 0, "progress": 0, "speed": "1MB/s"}
+        item = server.live_transfers([live], [row])[0]
+        self.assertEqual((item["state"], item["progress"], item["speed"]), ("done", 1, ""))
+        self.assertEqual(server.transfers_view([item], True)["active"], 0)
+        for other in (dict(live, id=6), dict(live, name="another.bin")):
+            self.assertEqual(server.live_transfers([other], [row])[0]["state"], "downloading")
+        for code, expected in ((2, "done"), (3, "failed")):
+            self.assertEqual(server.live_transfers([dict(live, status=code)], [row])[0]["state"], expected)
+        verifying = server.live_transfers([dict(live, hash=0.5)], [row])[0]
+        self.assertEqual((verifying["state"], verifying["verify"]), ("verifying", 0.5))
+
     def test_completed_tasks_do_not_keep_zero_or_missing_progress(self):
         for progress in (0, None, 0.5):
             done = server.transfer_view({"id": 1, "status": 2, "progress": progress})
