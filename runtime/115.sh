@@ -18,6 +18,11 @@ fi
 # them to the profile but deletes them at startup unless the last session is
 # restored, so without this flag closing the browser or restarting the container
 # logs 115 out. It also reopens the previous tabs.
+# 115's download engine sometimes runs a callback for a request it has already
+# freed after a network error. Chromium 125 then stops the whole browser with
+# "Detected dangling raw_ptr in unretained": the check defaults to crashing, and
+# only Chrome itself turns it into a report through Google's field trials, which
+# a Chromium fork never receives. Downloads would otherwise kill the browser.
 # Do not ignore TLS certificate errors or disable Chromium site isolation.
 exec /usr/local/115Browser/115Browser \
   "--user-data-dir=${PROFILE_DIR_IN_CONTAINER:-/etc/115}" \
@@ -27,5 +32,6 @@ exec /usr/local/115Browser/115Browser \
   --no-default-browser-check \
   --start-maximized \
   --restore-last-session \
+  --disable-features=PartitionAllocUnretainedDanglingPtr \
   --lang=zh-CN \
   "${extra_args[@]}" "$@"

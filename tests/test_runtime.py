@@ -143,6 +143,13 @@ class ConfigurationTests(unittest.TestCase):
         # 115's login cookies are session cookies; CI checks the restart itself (ci-desktop.py).
         self.assertIn("--restore-last-session", (ROOT / "runtime/115.sh").read_text())
 
+    def test_browser_survives_dangling_callbacks_in_the_download_engine(self):
+        # Chromium 125 crashes on this check by default; 115's downloads tripped it after network errors.
+        # Chromium keeps only the last --disable-features, so a second one would silently undo this.
+        script = (ROOT / "runtime/115.sh").read_text()
+        self.assertIn("--disable-features=PartitionAllocUnretainedDanglingPtr", script)
+        self.assertEqual(script.count("--disable-features"), 1)
+
     def test_cookie_extension_requires_values(self):
         with self.assertRaisesRegex(ValueError, "no COOKIE values"):
             self.execute(ENABLE_COOKIE_EXTENSION="true")
