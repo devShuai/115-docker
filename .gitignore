@@ -8,3 +8,5 @@ backups/
 __pycache__/
 *.pyc
 .ci-artifacts/
+/release.version
+/release.tags

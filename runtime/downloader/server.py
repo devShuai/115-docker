@@ -25,6 +25,8 @@ import links  # noqa: E402
 import session  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
+# The image's version (X.Y.Z, or edge-<commit> for main), written by the Dockerfile.
+VERSION_FILE = Path(__file__).resolve().parent.parent / "VERSION"
 FILES = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"),
          "/style.css": ("style.css", "text/css; charset=utf-8"), "/icon.svg": ("icon.svg", "image/svg+xml")}
 MAX_BODY = 64 * 1024
@@ -52,6 +54,16 @@ ENDPOINTS = apidocs.ENDPOINTS
 
 class NotFound(Exception):
     """Unknown API path."""
+
+
+def app_version():
+    try:
+        return VERSION_FILE.read_text(encoding="utf-8").strip() or "dev"
+    except OSError:
+        return "dev"  # A source checkout, not an image.
+
+
+VERSION = app_version()
 
 
 def _number(value, kind=int):
@@ -289,7 +301,7 @@ class App:
 
     def get(self, path, query):
         if path == "/api/status":
-            return self.cloud.status()
+            return {**self.cloud.status(), "version": VERSION}
         if path == "/api/endpoints":
             return apidocs.reference()
         if path == "/openapi.json":

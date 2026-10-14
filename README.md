@@ -30,7 +30,7 @@
 | 自动保持登录 | 扫码后保存登录 Cookie，重开浏览器或重建容器后自动恢复；未登录时每 2 秒检查一次，已登录时每分钟一次 |
 | CLI 与 JSON API | 内置 `115dl` 命令行；页面右上角提供可复制的命令和完整的参数、返回值、错误码说明；可下载独立客户端，agent 可读取 Markdown 与 OpenAPI 文档或安装 skill |
 | 数据持久化 | 浏览器配置、登录状态和自动下载任务保存在 profile 目录，下载文件放在独立的挂载目录 |
-| 依赖固定、验收后发布 | `vendor/` 中的依赖固定版本并校验 SHA256；流水线实测桌面连接、缩放、鼠标坐标、性能和登录恢复，通过后才发布 `latest` |
+| 依赖固定、验收后发布 | `vendor/` 中的依赖固定版本并校验 SHA256；流水线实测桌面连接、缩放、鼠标坐标、性能和登录恢复，通过后才发布；`latest` 只跟随正式版本 |
 
 桌面关闭了合成器和动画，默认 30 FPS、2 个编码线程，优先使用开销较低的 JPEG 编码。远程桌面只传输画面和操作，文件由容器内 **115 浏览器自带的下载引擎**下载，关闭访问端的网页不会中断容器里正在进行的任务。
 
@@ -360,9 +360,26 @@ NAS CPU 较弱时，可以把 `VNC_FPS` 降到 15～20，并保持逻辑分辨�
 
 ## 更新与维护
 
+### 版本与镜像标签
+
+版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)：`主版本.次版本.修订号`，例如 `1.2.3`。修订号只修问题；次版本增加功能并保持兼容；主版本有不兼容的变化，例如配置项或接口改名。每个版本的改动记录在 [CHANGELOG.md](CHANGELOG.md)，同时发布在 [GitHub Releases](https://github.com/devShuai/115-docker/releases)。
+
+Harbor 和 GHCR 使用相同的标签：
+
+| 标签 | 含义 |
+| --- | --- |
+| `latest` | 最新的正式版本，日常部署用它 |
+| `1.2.3` | 固定的某个版本，发布后不再变化 |
+| `1.2` / `1` | 该系列最新的正式版本；锁定 `1` 能自动拿到修复和新功能，但不会升级到不兼容的 2.x |
+| `1.3.0-rc.1` 等 | 预发布版本，只发布这一个标签，不更新 `latest` |
+| `edge` | main 最新一次验收通过的构建，用于提前试用，可能包含尚未发版的改动 |
+| `sha-<完整提交>` | main 上某次提交的构建；`build-<编号>`、`run-<编号>-<次数>` 是流水线的候选镜像 |
+
+运行中的版本可以在下载页面左上角、`/api/status` 的 `version` 字段、`115dl status`、镜像标签 `org.opencontainers.image.version` 或下面的检查脚本里看到。正式版显示为 `v1.2.3`，main 构建显示为 `edge-<提交>`，本地源码显示为 `dev`。
+
 ### 检查镜像更新
 
-`latest` 只在流水线验收通过后才更新；`build-<编号>` 和 `sha-<完整提交>` 是候选构建的标签，确认对应构建成功后再使用。
+脚本默认对比 `latest`；用 `--image` 可以改为跟踪 `1`、`edge` 等其他标签。
 
 ```bash
 # 直接部署的容器
@@ -375,7 +392,7 @@ sudo /usr/bin/python3 scripts/check-update.py --docker /usr/local/bin/docker --c
 python3 scripts/check-update.py --container 115-docker --image ghcr.io/devshuai/115-docker:latest
 ```
 
-脚本查询同平台镜像在远端的 config digest，并与**运行中容器**的 image ID 比较，不会下载镜像层。退出码 0 表示已是最新，10 表示有更新，1 表示检查失败；能正确处理 manifest index 和 BuildKit 证明附件。
+脚本查询同平台镜像在远端的 config digest，并与**运行中容器**的 image ID 比较，不会下载镜像层，同时显示运行中的版本号。退出码 0 表示已是最新，10 表示有更新，1 表示检查失败；能正确处理 manifest index 和 BuildKit 证明附件。
 
 群晖自带的更新提醒取决于 Container Manager 版本和仓库支持情况。**私有 Harbor 即使用的是 `latest`，也不能只依赖“有可用更新”的提示**，请用上面的脚本确认。另外，下载新镜像并不会让正在运行的容器自动换成新版本。
 
@@ -419,33 +436,53 @@ docker compose -f compose.yaml -f compose.registry.yaml -f compose.legacy.yaml u
 
 ### GitHub Actions 与 GHCR
 
-[CI and GHCR](https://github.com/devShuai/115-docker/actions/workflows/ci.yml) 定义在 `.github/workflows/ci.yml`，在推送 main、提交 PR 或手动触发时运行：
+[CI and GHCR](https://github.com/devShuai/115-docker/actions/workflows/ci.yml) 定义在 `.github/workflows/ci.yml`，在推送 main、推送 `v*` 标签、提交 PR 或手动触发时运行：
 
 1. 校验固定归档和 agent skill 是否同步，运行 Python 测试，检查 Shell 和 JavaScript 语法，并运行下载进度（从 0% 到完成、请求失败后恢复）与接口文档的回归测试；可安装的 skill 包作为产物保留 90 天。
 2. 构建 linux/amd64 镜像，在隔离容器中运行工程自带的双后端桌面、分辨率、性能和登录保持验收。
 3. 无论桌面验收是否成功，都会尝试上传截图、性能报告和诊断日志，保留 14 天。
-4. main 上验收通过后，用 `GITHUB_TOKEN` 发布 `ghcr.io/devshuai/115-docker:run-<run_id>-<attempt>` 和 `sha-<完整提交>`；只有该提交仍是 main 的最新提交时才更新 `latest`。PR 不会登录镜像仓库，也不会推送镜像。
+4. 验收通过后，用 `GITHUB_TOKEN` 发布候选镜像 `ghcr.io/devshuai/115-docker:run-<run_id>-<attempt>`。main 构建另外发布 `sha-<完整提交>`，且只有该提交仍是 main 的最新提交时才更新 `edge`；版本标签的构建发布对应版本（正式版同时更新 `X.Y`、`X` 和 `latest`）。PR 不会登录镜像仓库，也不会推送镜像。
+5. 版本标签的构建发布镜像后，再创建 GitHub Release，附上 CHANGELOG.md 中该版本的说明和可安装的 skill 包；预发布版本标记为 Pre-release。
 
-工作流里的官方 Actions 都固定到具体提交，发布作业声明了 `packages: write`，不需要把 Harbor 密码复制到 GitHub。首次发布后，可以在 GitHub Packages 管理镜像的访问权限；公开仓库下新建的包不一定是公开的，需要匿名拉取时请把包设为 Public。OneDev 与 GitHub 各自验收、各自发布到自己的仓库，互不依赖。
+工作流里的官方 Actions 都固定到具体提交，发布镜像的作业声明了 `packages: write`，创建 Release 的作业声明了 `contents: write`，不需要把 Harbor 密码复制到 GitHub。首次发布后，可以在 GitHub Packages 管理镜像的访问权限；公开仓库下新建的包不一定是公开的，需要匿名拉取时请把包设为 Public。OneDev 与 GitHub 各自验收、各自发布到自己的仓库，互不依赖。
 
 ### OneDev 与 Harbor
 
-`.onedev-buildspec.yml` 包含两个作业：
+`.onedev-buildspec.yml` 包含三个作业：
 
 - **validate**：分支或 PR 更新时触发，检查固定归档、agent skill 是否同步、Shell 语法、Python 代码和运行配置测试。
-- **publish-image**：main 更新时触发，依赖 validate 成功；构建 amd64 候选镜像，运行两种后端的真实桌面与性能验收，发布结果和截图，通过后才更新 `latest`。
+- **publish-image**：main 更新时触发，依赖 validate 成功；构建 amd64 候选镜像，运行两种后端的真实桌面与性能验收，发布结果和截图，通过后发布 `sha-<完整提交>` 并更新 `edge`。
+- **release**：推送 `v*` 标签、且标签所在提交属于 main 时触发，依赖 validate 成功；同样构建并完整验收，通过后发布该版本的镜像标签，正式版同时更新 `X.Y`、`X` 和 `latest`。
+
+两条流水线发布哪些标签，都由 `scripts/version.py` 根据标签名统一计算，构建时把版本号写入镜像。
 
 执行器需要 Docker 和 Buildx，并启用 **Enable Buildx Image Build** 与 **Enable Buildx Image Tools**。OneDev 的 Job Secrets 使用 `registry-username` 和 `registry-password`，授权给受信任的 main 发布作业；Harbor 的 `shuai-repo` 项目需要允许该账号 Pull/Push。执行器要能访问 Docker Hub 和 Harbor；安装软件包的阶段不需要访问 apt 源。
 
 流水线实测 1024×768、1280×720、1920×1080、1600×900 四种分辨率，模拟 125%、150%、200% DPR，核对 canvas、X11 和鼠标位置；另外检查认证、中文界面、时区、下载接口和登录恢复。静态和动画画面使用同一场景对比，结果保存在 `.ci-artifacts/`。其中 CPU 100% 表示占满一个核心；稀疏像素采样不等于渲染 FPS，也不能代替真实的多任务测试。
 
-发布作业串行更新 `latest`。重跑旧提交也会重新发布旧版本，操作前请核对提交。CI 中的 Chromium 使用 `--disable-dev-shm-usage`，以适应执行器默认 64 MiB 的共享内存；生产环境的 Compose 仍配置 1 GiB。
+两个发布作业串行执行。重跑旧的 main 构建会把 `edge` 改回旧提交，重跑旧版本的 release 会把 `latest` 改回旧版本，操作前请核对。CI 中的 Chromium 使用 `--disable-dev-shm-usage`，以适应执行器默认 64 MiB 的共享内存；生产环境的 Compose 仍配置 1 GiB。
+
+### 发版
+
+正式版本由 `vX.Y.Z` 标签触发。在 main 上运行：
+
+```bash
+# 预览版本说明，不做任何改动
+python3 scripts/release.py patch --dry-run
+# 发版：参数也可以是 minor、major、1.2.0 或 1.3.0-rc.1
+python3 scripts/release.py patch --push
+```
+
+脚本先检查当前在 main、工作区干净、没有落后于各远端，然后把上一个正式版之后的提交按 feat、fix、perf、docs 和其他分组，写成版本说明加入 CHANGELOG.md；接着提交 `release: vX.Y.Z`、创建带说明的标签，并把 main 和标签一起推送到所有远端。新版本必须高于已有的全部版本，所以 `latest` 只会往前走。需要手写版本说明时，用 `--notes 文件`。
+
+两条流水线收到标签后都会重新构建、完整验收，通过后才发布版本标签。标签必须打在 main 的提交上，否则不会发布。
 
 ### 工程结构
 
 ```text
 Dockerfile / compose*.yaml     构建与部署
 .env.example                   Compose 配置模板
+CHANGELOG.md                   各版本的更新记录
 .onedev-buildspec.yml          OneDev 验证与镜像发布
 .github/workflows/ci.yml       GitHub Actions 验证与 GHCR 发布
 runtime/                       入口、进程管理、浏览器配置与健康检查
@@ -454,7 +491,7 @@ runtime/                       入口、进程管理、浏览器配置与健康�
 rootfs/                        Xfce 设置、主题、桌面快捷方式与壁纸
 skills/115-download/           agent skill（由 scripts/build-agent-skill.py 生成）
 vendor/                        固定安装包、源码归档、manifest 和 SHA256SUMS
-scripts/                       归档校验、更新检查、skill 生成、桌面与性能验收
+scripts/                       归档校验、版本与发版、更新检查、skill 生成、桌面与性能验收
 tests/                         配置、协议、下载接口与登录保持测试
 nginx/                         两种后端的 HTTPS 反代示例
 THIRD_PARTY.md                 第三方组件来源与许可

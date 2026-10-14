@@ -142,6 +142,8 @@ async function refreshStatus() {
   const login = $("login");
   try {
     const status = await api("api/status");
+    // Releases are X.Y.Z; main builds say edge-<commit>.
+    $("version").textContent = /^\d/.test(status.version || "") ? "v" + status.version : status.version || "";
     const [kind, text] = !status.browser ? ["bad", "115 浏览器未运行"]
       : status.logged_in === false ? ["warn", "115 未登录，请先在远程桌面扫码登录"]
       : status.logged_in ? ["ok", "115 已登录"] : ["", "115 浏览器运行中"];

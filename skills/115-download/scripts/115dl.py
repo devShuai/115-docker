@@ -120,6 +120,8 @@ def show_status(data, _):
         print(f"115 已登录（user_id {data.get('user_id', '')}）")
     else:
         print("115 浏览器运行中")
+    if data.get("version"):
+        print(f"服务端版本 {data['version']}")
 
 
 def show_listing(data, _):

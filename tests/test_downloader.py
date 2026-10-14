@@ -952,7 +952,9 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("/api/status", out)
         self.assertIn("inspect", out)
-        self.assertEqual(self.run_cli("status")[1].strip(), "115 已登录（user_id 42）")
+        with patch.object(server, "VERSION", "1.2.0"):
+            self.assertEqual(self.run_cli("status")[1].splitlines(), ["115 已登录（user_id 42）", "服务端版本 1.2.0"])
+            self.assertEqual(json.loads(self.run_cli("--json", "status")[1])["version"], "1.2.0")
         code, _ = self.run_cli("download", "--path", "/电影/合集")
         self.assertEqual(code, 0)
         self.assertIn(("download", [{"n": "合集", "pc": "pc1", "is_dir": True}]), self.cloud.calls)

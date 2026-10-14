@@ -84,13 +84,16 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json status`
 {
   "browser": true,
   "logged_in": true,
-  "user_id": "12345"
+  "user_id": "12345",
+  "version": "1.0.0"
 }
 ```
 
 - browser：浏览器是否可用 boolean
 
 - logged_in：boolean 或 null，当前 115 登录状态
+
+- version：服务端版本：X.Y.Z 为正式版，edge-<提交> 为 main 的测试版，dev 为本地源码
 
 - user_id：登录用户 ID，可能省略
 

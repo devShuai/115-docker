@@ -22,7 +22,7 @@ jobs:
         python3 scripts/build-agent-skill.py --check --zip .ci-artifacts/115-download.skill.zip
         bash -n runtime/*.sh scripts/ci-smoke.sh
         python3 -m unittest discover -s tests -v
-        python3 -m py_compile scripts/ci-rfb.py scripts/ci-desktop.py scripts/check-update.py runtime/prepare-display.py runtime/web/patch-client.py runtime/downloader/*.py
+        python3 -m py_compile scripts/ci-rfb.py scripts/ci-desktop.py scripts/check-update.py scripts/version.py scripts/release.py runtime/prepare-display.py runtime/web/patch-client.py runtime/downloader/*.py
     runAs: '0:0'
     useTTY: false
     condition: SUCCESSFUL
@@ -39,6 +39,7 @@ jobs:
   retryDelay: 30
   timeout: 900
 - name: publish-image
+  # Every main commit: verified image as sha-<commit> and edge. latest moves only with releases.
   steps:
   - type: CheckoutStep
     name: checkout
@@ -46,6 +47,20 @@ jobs:
       type: DefaultCredential
     withLfs: false
     withSubmodules: false
+    condition: SUCCESSFUL
+  - type: CommandStep
+    name: set edge version
+    runInContainer: true
+    image: python:3.13-slim-trixie
+    interpreter:
+      type: PosixInterpreter
+      shell: bash
+      commands: |
+        set -euo pipefail
+        # Writes release.version and release.tags; the image steps below read them as file variables.
+        python3 scripts/version.py --tag "" --commit @commit_hash@ --image registry.devshuai.com/shuai-repo/115-docker --write release
+    runAs: '0:0'
+    useTTY: false
     condition: SUCCESSFUL
   - type: BuildImageStep
     name: build and push candidate
@@ -57,7 +72,7 @@ jobs:
       userName: '@secret:registry-username@'
       passwordSecret: registry-password
     platforms: linux/amd64
-    moreOptions: --label org.opencontainers.image.source=https://one.devshuai.com/shuai-toys/115-docker --label org.opencontainers.image.revision=@commit_hash@
+    moreOptions: --build-arg APP_VERSION=@file:release.version@ --label org.opencontainers.image.source=https://one.devshuai.com/shuai-toys/115-docker --label org.opencontainers.image.revision=@commit_hash@ --label org.opencontainers.image.version=@file:release.version@
     condition: SUCCESSFUL
   - type: CommandStep
     name: compare both backends and verify actual browser resize
@@ -79,16 +94,16 @@ jobs:
     artifacts: '.ci-artifacts/**'
     condition: ALWAYS
   - type: RunImagetoolsStep
-    name: promote verified image to latest
-    arguments: create -t registry.devshuai.com/shuai-repo/115-docker:latest registry.devshuai.com/shuai-repo/115-docker:build-@build_number@
+    name: promote verified image to edge
+    arguments: create @file:release.tags@ registry.devshuai.com/shuai-repo/115-docker:build-@build_number@
     registryLogins:
     - registryUrl: registry.devshuai.com
       userName: '@secret:registry-username@'
       passwordSecret: registry-password
     condition: SUCCESSFUL
   - type: RunImagetoolsStep
-    name: inspect published latest manifest
-    arguments: inspect registry.devshuai.com/shuai-repo/115-docker:latest
+    name: inspect published manifest
+    arguments: inspect registry.devshuai.com/shuai-repo/115-docker:edge
     registryLogins:
     - registryUrl: registry.devshuai.com
       userName: '@secret:registry-username@'
@@ -98,6 +113,90 @@ jobs:
   - type: BranchUpdateTrigger
     branches: main
     userMatch: anyone
+  jobDependencies:
+  - jobName: validate
+    requireSuccessful: true
+    artifacts: ''
+  sequentialGroup: '@project_path@:registry-publish'
+  retryCondition: never
+  maxRetries: 0
+  retryDelay: 30
+  timeout: 3600
+- name: release
+  # A tag vX.Y.Z on main: verified image as X.Y.Z, plus X.Y, X and latest for stable releases.
+  steps:
+  - type: CheckoutStep
+    name: checkout
+    cloneCredential:
+      type: DefaultCredential
+    withLfs: false
+    withSubmodules: false
+    condition: SUCCESSFUL
+  - type: CommandStep
+    name: set release version and tags
+    runInContainer: true
+    image: python:3.13-slim-trixie
+    interpreter:
+      type: PosixInterpreter
+      shell: bash
+      commands: |
+        set -euo pipefail
+        # Writes release.version and release.tags; the image steps below read them as file variables.
+        python3 scripts/version.py --tag "@tag@" --commit @commit_hash@ --image registry.devshuai.com/shuai-repo/115-docker --write release
+    runAs: '0:0'
+    useTTY: false
+    condition: SUCCESSFUL
+  - type: BuildImageStep
+    name: build and push candidate
+    output:
+      type: RegistryOutput
+      tags: registry.devshuai.com/shuai-repo/115-docker:build-@build_number@
+    registryLogins:
+    - registryUrl: registry.devshuai.com
+      userName: '@secret:registry-username@'
+      passwordSecret: registry-password
+    platforms: linux/amd64
+    moreOptions: --build-arg APP_VERSION=@file:release.version@ --label org.opencontainers.image.source=https://one.devshuai.com/shuai-toys/115-docker --label org.opencontainers.image.revision=@commit_hash@ --label org.opencontainers.image.version=@file:release.version@
+    condition: SUCCESSFUL
+  - type: CommandStep
+    name: compare both backends and verify actual browser resize
+    runInContainer: true
+    image: registry.devshuai.com/shuai-repo/115-docker:build-@build_number@
+    registryLogins:
+    - registryUrl: registry.devshuai.com
+      userName: '@secret:registry-username@'
+      passwordSecret: registry-password
+    interpreter:
+      type: PosixInterpreter
+      shell: bash
+      commands: CI_BACKENDS=legacy,kasm bash scripts/ci-smoke.sh
+    runAs: '0:0'
+    useTTY: false
+    condition: SUCCESSFUL
+  - type: PublishArtifactStep
+    name: publish performance results and desktop screenshots
+    artifacts: '.ci-artifacts/**'
+    condition: ALWAYS
+  - type: RunImagetoolsStep
+    name: publish release tags
+    arguments: create @file:release.tags@ registry.devshuai.com/shuai-repo/115-docker:build-@build_number@
+    registryLogins:
+    - registryUrl: registry.devshuai.com
+      userName: '@secret:registry-username@'
+      passwordSecret: registry-password
+    condition: SUCCESSFUL
+  - type: RunImagetoolsStep
+    name: inspect published manifest
+    arguments: inspect registry.devshuai.com/shuai-repo/115-docker:@file:release.version@
+    registryLogins:
+    - registryUrl: registry.devshuai.com
+      userName: '@secret:registry-username@'
+      passwordSecret: registry-password
+    condition: SUCCESSFUL
+  triggers:
+  - type: TagCreateTrigger
+    tags: v*
+    branches: main
   jobDependencies:
   - jobName: validate
     requireSuccessful: true

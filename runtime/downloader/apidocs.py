@@ -97,7 +97,7 @@ LIST_FIELDS = {
     "share": "分享列表附带 {url,receive_code}，供后续下载调用",
 }
 EXAMPLES = {
-    "status": ({}, {"browser": True, "logged_in": True, "user_id": "12345"}, "115dl --json status"),
+    "status": ({}, {"browser": True, "logged_in": True, "user_id": "12345", "version": "1.0.0"}, "115dl --json status"),
     "apis": ({}, {"version": "1", "endpoints": [], "errors": [], "resources": []}, "115dl --json apis"),
     "inspect": ({"text": "/电影", "sort": "time", "asc": False}, LISTING,
                 "115dl --json inspect '/电影' --sort time --desc"),
@@ -143,6 +143,7 @@ NOTES = {
 }
 FIELDS = {
     "status": {"browser": "浏览器是否可用 boolean", "logged_in": "boolean 或 null，当前 115 登录状态",
+               "version": "服务端版本：X.Y.Z 为正式版，edge-<提交> 为 main 的测试版，dev 为本地源码",
                "user_id": "登录用户 ID，可能省略"},
     "apis": {"version": "文档版本", "endpoints": "命令、方法、参数 schema、约束、示例和返回字段",
              "errors / resources / auth / limits / installation / skill_installation": "通用错误、下载资源、认证、请求限制与客户端/技能安装命令"},
@@ -237,7 +238,8 @@ TRANSFER = object_schema({"id": STRING, "name": STRING, "state": {"type": "strin
     "speed": STRING, "remain": INT, "received": STRING, "total": STRING, "folder": BOOL,
     "error": STRING, "ended": STRING})
 RESPONSE_SCHEMAS = {
-    "status": object_schema({"browser": BOOL, "logged_in": {"type": ["boolean", "null"]}, "user_id": STRING}),
+    "status": object_schema({"browser": BOOL, "logged_in": {"type": ["boolean", "null"]}, "user_id": STRING,
+                             "version": STRING}),
     "apis": object_schema({"version": STRING, "auth": STRING, "limits": STRING, "installation": STRING, "skill_installation": STRING,
         "endpoints": array_schema({"type": "object"}), "errors": array_schema(object_schema({"status": INT, "desc": STRING})),
         "resources": array_schema(object_schema({"path": STRING, "summary": STRING}))}),

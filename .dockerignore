@@ -13,3 +13,5 @@ vendor/*.part
 .DS_Store
 .ci-artifacts
 vendor/**/*.part
+release.version
+release.tags

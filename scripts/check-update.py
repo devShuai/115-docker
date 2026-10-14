@@ -49,12 +49,13 @@ def check_update(docker, container, image):
                 'variant': local.get('Variant', '')}
     remote = docker_json(docker, 'manifest', 'inspect', '--verbose', image)
     remote_id = image_config_digest(remote, platform)
+    labels = local.get('Config', {}).get('Labels') or {}
     return {'status': 'update_available' if running['Image'] != remote_id else 'up_to_date',
             'container': container, 'image': image,
             'deployed_tag': running['Config']['Image'], 'platform': platform,
             'running_image_id': running['Image'], 'latest_image_id': remote_id,
-            'running_revision': (local.get('Config', {}).get('Labels') or {}).get(
-                'org.opencontainers.image.revision', '')}
+            'running_version': labels.get('org.opencontainers.image.version', ''),
+            'running_revision': labels.get('org.opencontainers.image.revision', '')}
 
 
 def main(argv=None):
@@ -75,6 +76,8 @@ def main(argv=None):
     else:
         print(('发现更新' if result['status'] == 'update_available' else '已是最新镜像')
               + '：' + args.image)
+        if result.get('running_version'):
+            print('运行版本：' + result['running_version'])
         print('运行镜像：' + result['running_image_id'])
         print('仓库镜像：' + result['latest_image_id'])
     return 10 if result['status'] == 'update_available' else 0

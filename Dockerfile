@@ -71,6 +71,12 @@ RUN mkdir -p /etc/115 /opt/Downloads /opt/.cache /opt/.config \
     && test -x /usr/local/bin/115dl \
     && python3 -c "import ast,sys; [ast.parse(open(f).read()) for f in sys.argv[1:]]" /opt/115/downloader/cli.py /opt/115/downloader/session.py
 
+# Set by the pipelines from the release tag (X.Y.Z) or the commit (edge-<commit>).
+# Last, so a new version reuses every cached layer above.
+ARG APP_VERSION=dev
+LABEL org.opencontainers.image.version=$APP_VERSION
+RUN printf '%s\n' "$APP_VERSION" >/opt/115/VERSION
+
 EXPOSE 1150 1151
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD ["python3", "/opt/115/healthcheck.py"]

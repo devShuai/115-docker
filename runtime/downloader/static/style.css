@@ -61,6 +61,7 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; vertical-align: m
 .top-inner { display: flex; align-items: center; gap: 20px; max-width: 1040px; height: 52px; margin: 0 auto; padding: 0 24px; }
 .brand { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; white-space: nowrap; }
 .logo { display: block; width: 22px; height: 22px; }
+.version { font-size: 12px; font-weight: 400; color: var(--text-3); }
 .login { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; color: var(--text-2); }
 .login span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
@@ -339,6 +340,7 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
 
 @media (max-width: 640px) {
   .cli-label { display: none; }
+  .version { display: none; }
   .cli-btn { padding: 0 9px; }
   .top-right { gap: 10px; }
   .cli-dialog { height: calc(100vh - 32px); }
