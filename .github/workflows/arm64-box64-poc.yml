@@ -1,0 +1,46 @@
+name: PoC arm64 box64
+
+# Throwaway feasibility check, only on the poc/arm64-box64 branch: can the x86-64
+# 115 Browser run under box64 on arm64? Each stage posts its result as an annotation.
+on:
+  push:
+    branches: [poc/arm64-box64]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  box64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Start a Debian trixie arm64 container
+        run: |
+          mkdir -p .poc
+          docker run -d --name poc --shm-size=1g -v "$PWD:/w" -w /w debian:trixie-slim sleep infinity
+          bash poc/arm64/step.sh container bash poc/arm64/describe.sh
+      - name: Build box64 v0.4.4
+        run: bash poc/arm64/step.sh "box64 build" bash poc/arm64/build-box64.sh
+      - name: Install the x86-64 115 Browser with multiarch libraries
+        run: bash poc/arm64/step.sh "browser install" bash poc/arm64/install-browser.sh
+      - name: Browser reports its version
+        run: bash poc/arm64/step.sh version bash poc/arm64/check-version.sh
+      - name: Headless render of example.com
+        run: bash poc/arm64/step.sh "headless render" bash poc/arm64/check-headless.sh
+      - name: Desktop browser opens 115.com with the 115 bridge
+        run: bash poc/arm64/step.sh "115.com on a desktop" bash poc/arm64/check-desktop.sh
+      - name: Stays up for 3 minutes of navigation
+        run: bash poc/arm64/step.sh stability python3 poc/arm64/stability.py
+      - name: Upload screenshot and logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: arm64-box64-poc
+          path: .poc/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
