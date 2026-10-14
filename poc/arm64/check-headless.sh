@@ -26,6 +26,9 @@ while IFS='|' read -r name vars flags limit; do
     crash=$(grep -a -m1 -o -E 'SIGSEGV @[^(]*|SIGILL[^,]*|SIGBUS[^,]*|free\(\): [a-z ]+|Unimplemented Opcode.{0,60}' "/w/.poc/headless-$name.err" | head -c 120)
     opcode=$(grep -a -m1 -o -E 'x64opcode=[0-9A-F ]{2,24}' "/w/.poc/headless-$name.err")
     echo "RESULT: $name: no page after ${elapsed}s (exit $code): ${crash:-no crash message} ${opcode}"
+    # What the browser or box64 said last, without the noise every run prints.
+    grep -a -v -E 'bus\.cc|cpufreq|CURLManager|thread id|^,|^ *$|^(R|RSP|ES|  |RAX|RBX|R8|R12)' "/w/.poc/headless-$name.err" \
+      | tail -n 7 | cut -c1-170 | sed "s/^/RESULT:   /"
   fi
 done <poc/arm64/variants.txt
 echo "RESULT: $passed configuration(s) rendered; later stages use: $(cat /w/.poc/winner.name 2>/dev/null || echo none)"

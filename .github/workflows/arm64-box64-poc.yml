@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         box64:
-          - {name: v0.4.4, ref: 2f130fab1d6e1a4ee8a71dc60cfdfcc839ad192a}
+          # v0.4.4 kept crashing on a null allocator read in every configuration; main gets past it.
           - {name: main-2026-10-14, ref: d653d0ebefeba2c9abe13a5c4c13663bbd242549}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
