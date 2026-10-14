@@ -1,7 +1,8 @@
 #!/bin/bash
 # The way the image runs it: a real X display, DevTools on 127.0.0.1, same flags as runtime/115.sh.
 set -euo pipefail
-export DISPLAY=:99 BOX64_NOBANNER=1
+export DISPLAY=:99
+. poc/arm64/box64-env.sh
 setsid nohup Xvfb :99 -screen 0 1600x900x24 -nolisten tcp >/w/.poc/xvfb.log 2>&1 &
 sleep 2
 setsid nohup box64 /usr/local/115Browser/115Browser --user-data-dir=/tmp/profile --no-sandbox --test-type \

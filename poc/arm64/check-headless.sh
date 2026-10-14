@@ -1,7 +1,7 @@
 #!/bin/bash
 # Exercises the multi-process browser (browser, zygote, renderer, GPU/utility) without a display.
 set -euo pipefail
-export BOX64_NOBANNER=1
+. poc/arm64/box64-env.sh
 start=$(date +%s)
 timeout 420 box64 /usr/local/115Browser/115Browser --headless=new --no-sandbox --disable-gpu --no-first-run \
   --user-data-dir=/tmp/headless --disable-features=PartitionAllocUnretainedDanglingPtr \
