@@ -12,8 +12,15 @@ permissions:
 
 jobs:
   box64:
+    name: box64 ${{ matrix.box64.name }}
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 75
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        box64:
+          - {name: v0.4.4, ref: 2f130fab1d6e1a4ee8a71dc60cfdfcc839ad192a}
+          - {name: main-2026-10-14, ref: d653d0ebefeba2c9abe13a5c4c13663bbd242549}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -23,8 +30,8 @@ jobs:
           mkdir -p .poc
           docker run -d --name poc --shm-size=1g -v "$PWD:/w" -w /w debian:trixie-slim sleep infinity
           bash poc/arm64/step.sh container bash poc/arm64/describe.sh
-      - name: Build box64 v0.4.4
-        run: bash poc/arm64/step.sh "box64 build" bash poc/arm64/build-box64.sh
+      - name: Build box64 ${{ matrix.box64.name }}
+        run: bash poc/arm64/step.sh "box64 build" env BOX64_REF=${{ matrix.box64.ref }} bash poc/arm64/build-box64.sh
       - name: Install the x86-64 115 Browser with multiarch libraries
         run: bash poc/arm64/step.sh "browser install" bash poc/arm64/install-browser.sh
       - name: Browser reports its version
@@ -39,7 +46,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: arm64-box64-poc
+          name: arm64-box64-poc-${{ matrix.box64.name }}
           path: .poc/
           include-hidden-files: true
           if-no-files-found: warn

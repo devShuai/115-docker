@@ -1,11 +1,11 @@
 #!/bin/bash
-# Generic ARM64 box64 with the dynamic recompiler, pinned to the v0.4.4 release commit.
+# Generic ARM64 box64 with the dynamic recompiler, at the commit given in BOX64_REF.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends git ca-certificates cmake make gcc g++ python3 >/dev/null
 git clone -q https://github.com/ptitSeb/box64.git /src/box64
-git -C /src/box64 checkout -q 2f130fab1d6e1a4ee8a71dc60cfdfcc839ad192a
+git -C /src/box64 checkout -q "${BOX64_REF:?}"
 start=$(date +%s)
 cmake -S /src/box64 -B /src/box64/build -D ARM_DYNAREC=ON -D CMAKE_BUILD_TYPE=RelWithDebInfo >/dev/null
 cmake --build /src/box64/build -j"$(nproc)" >/dev/null
