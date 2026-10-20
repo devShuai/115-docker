@@ -73,5 +73,5 @@ test('documentation renders literal values without executing HTML and recovers a
   context.api = async () => data;
   await vm.runInContext('loadEndpoints()', context);
   assert.ok(textOf(elements.get('api-details').children[0]).includes(data.endpoints[0].notes));
-  assert.equal(elements.get('api-details').children.length, 12);
+  assert.equal(elements.get('api-details').children.length, data.endpoints.length);
 });
