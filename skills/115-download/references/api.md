@@ -577,15 +577,15 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json transfers`
 
 ## GET /api/local — NAS 本地下载记录
 
-最近 30 条浏览器下载历史；received/total 为字节。以 key=done 为完成依据；并非 NAS 全盘文件列表。
+浏览器下载历史，默认最近 30 条；received/total 为字节。以 key=done 为完成依据；并非 NAS 全盘文件列表。exists=false 表示文件已不在 NAS 上（被删或移走）。
 
-CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json local`
+CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json local --limit 30`
 
 参数：
 
-无参数。
+- limit (query, 可选)：最多返回几条，默认 30，最多 500；{"type": "integer", "minimum": 1, "maximum": 500, "default": 30}
 
-请求：`GET /api/local`
+请求：`GET /api/local?limit=30`
 
 200 返回示例（示意数据）：
 
@@ -601,13 +601,123 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json local`
       "state": "已完成",
       "key": "done",
       "started": 1760000000,
-      "finished": 1760000001
+      "finished": 1760000001,
+      "exists": true
     }
   ]
 }
 ```
 
-- downloads[]：id、name、path（容器内路径）、received/total（字节）、state（中文）、key（downloading/done/canceled/failed）、started/finished（Unix 秒或 null）
+- downloads[]：id、name、path（容器内路径）、received/total（字节）、state（中文）、key（downloading/done/canceled/failed）、started/finished（Unix 秒或 null）、exists（文件还在不在）
+
+## POST /api/delete — 删除网盘文件或文件夹（进 115 回收站）
+
+删除后进 115 回收站，可在 115 里恢复；文件夹连同里面的内容一起删。ids 不可空，最多 1150 项。
+
+CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json delete 42 --pid 0`
+
+参数：
+
+- ids (body, 必填)：目录响应里的 items[].id；{"type": "array", "minItems": 1, "maxItems": 1150, "items": {"type": "string", "pattern": "^[0-9]{1,32}$"}, "description": "从目录响应原样复制 items[].id；不能是网盘根 0"}
+
+- pid (body, 可选)：它们所在的目录 ID；{"type": "string", "pattern": "^[0-9]{0,32}$", "description": "所在目录 ID，可省略"}
+
+请求：`POST /api/delete`
+
+```json
+{
+  "ids": [
+    "42"
+  ],
+  "pid": "0"
+}
+```
+
+200 返回示例（示意数据）：
+
+```json
+{
+  "count": 1
+}
+```
+
+- count：已删除（进回收站）的项数
+
+## POST /api/offline/delete — 删除云下载任务
+
+只删云下载任务记录；files=true 时 115 同时删除任务存到网盘的文件（进回收站）。也会停止自动下到 NAS 的跟踪。
+
+CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json remove aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`
+
+参数：
+
+- hashes (body, 必填)：任务 info_hash 列表；{"type": "array", "minItems": 1, "maxItems": 100, "items": {"type": "string", "pattern": "^[0-9A-Za-z]{8,64}$"}}
+
+- files (body, 可选)：true 时连同任务下载到网盘的文件一起删；{"type": "boolean", "default": false, "description": "true 时 115 同时删除任务存到网盘的文件"}
+
+请求：`POST /api/offline/delete`
+
+```json
+{
+  "hashes": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "files": false
+}
+```
+
+200 返回示例（示意数据）：
+
+```json
+{
+  "count": 1,
+  "files": false,
+  "forgotten": 0
+}
+```
+
+- count / files：删除的任务数 / 是否连同网盘文件一起删
+
+- forgotten：其中原本在等着下到 NAS 的任务数
+
+## POST /api/local/delete — 删除 NAS 上下载好的文件
+
+直接从 NAS 删除，不能恢复。只删下载目录里的普通文件，下载中的、符号链接和目录外的都不删；删空的文件夹一并删掉。下载历史记录保留，local 里显示 exists=false。
+
+CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json local-delete 42`
+
+参数：
+
+- ids (body, 必填)：local 记录的 downloads[].id；{"type": "array", "minItems": 1, "maxItems": 200, "items": {"type": "integer", "minimum": 1}, "description": "GET /api/local 的 downloads[].id"}
+
+请求：`POST /api/local/delete`
+
+```json
+{
+  "ids": [
+    42
+  ]
+}
+```
+
+200 返回示例（示意数据）：
+
+```json
+{
+  "deleted": [
+    {
+      "id": 42,
+      "name": "example.mkv"
+    }
+  ],
+  "missing": [],
+  "failed": []
+}
+```
+
+- deleted[] / missing[]：已删除的 / 文件本来就不在的 {id,name}
+
+- failed[]：没删的 {id,name,error}：下载中、不在下载目录里或删除出错
 
 ## GET /api/watch — 等待下到 NAS 的任务
 

@@ -130,6 +130,23 @@ class LinkTests(unittest.TestCase):
             links.task_hash("../x")
 
 
+class DeleteInputTests(unittest.TestCase):
+    def test_delete_inputs_are_checked_before_reaching_the_browser(self):
+        self.assertEqual(links.file_ids(["42", 43, "42"]), ["42", "43"])
+        for bad in ([], "42", ["0"], ["00"], [True], ["4a"], ["-1"], [None], ["1"] * (links.MAX_ITEMS + 1)):
+            with self.assertRaises(ValueError):
+                links.file_ids(bad)
+        self.assertEqual(links.task_hashes("a" * 40), ["a" * 40])
+        self.assertEqual(links.task_hashes(["a" * 40, "a" * 40, "b" * 40]), ["a" * 40, "b" * 40])
+        for bad in ([], ["../x"], [42], ["a" * 40] * (links.MAX_TASKS + 1)):
+            with self.assertRaises(ValueError):
+                links.task_hashes(bad)
+        self.assertEqual(links.download_ids([3, "4", 3]), [3, 4])
+        for bad in ([], [0], ["-2"], [True], ["x"], [1.5], list(range(1, links.MAX_LOCAL + 2))):
+            with self.assertRaises(ValueError):
+                links.download_ids(bad)
+
+
 class AuthTests(unittest.TestCase):
     def test_hash_round_trip_and_file_format(self):
         encoded = auth.encode("Check123")
@@ -218,6 +235,23 @@ DRIVE_TAB = {"id": "t1", "type": "page", "url": "https://115.com/?cid=0&offset=0
 
 
 class ClientTests(unittest.TestCase):
+    def test_deletes_go_through_the_logged_in_page(self):
+        browser = FakeBrowser([DRIVE_TAB], [{"state": True}, {"state": False, "error": "文件正在使用"},
+                                            {"state": True, "errno": 0}, {"login": False}])
+        cloud = browser.cloud()
+        cloud.delete_files(["42", "43"], "5")
+        self.assertIs(browser.log[-1][1], client.DELETE_FILES)
+        self.assertEqual(browser.log[-1][2], {"ids": ["42", "43"], "pid": "5"})
+        with self.assertRaisesRegex(RuntimeError, "文件正在使用"):
+            cloud.delete_files(["42"])
+        cloud.delete_offline(["a" * 40], files=True)
+        self.assertIs(browser.log[-1][1], client.DELETE_OFFLINE)
+        self.assertEqual(browser.log[-1][2], {"hashes": ["a" * 40], "files": True})
+        with self.assertRaises(client.NotLoggedIn):
+            cloud.delete_offline(["a" * 40])
+        self.assertIn("rb/delete", client.DELETE_FILES)
+        self.assertIn('lixian("task_del"', client.DELETE_OFFLINE)
+
     def test_status_has_no_side_effects(self):
         self.assertEqual(FakeBrowser(up=False).cloud().status(), {"browser": False, "logged_in": False})
         browser = FakeBrowser(pages=[{"id": "x", "type": "page", "url": "file:///fixture.html"}])
@@ -379,6 +413,13 @@ class FakeCloud:
 
 
 class WatcherTests(unittest.TestCase):
+    def test_deleted_tasks_are_forgotten(self):
+        watcher = self.watcher(FakeCloud())
+        watcher.watch([{"info_hash": "h1", "name": "电影"}, {"info_hash": "h2", "name": "剧"}])
+        self.assertEqual(watcher.forget(["h1", "h9"]), 1)
+        self.assertEqual([task["hash"] for task in watcher.snapshot()], ["h2"])
+        self.assertEqual([task["hash"] for task in self.watcher(FakeCloud()).snapshot()], ["h2"])   # 存下来了
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -448,6 +489,9 @@ class FakeWatcher:
     def snapshot(self):
         return [{"hash": "h1", "name": "n", "status": jobs.WAITING}]
 
+    def forget(self, hashes):
+        return sum(1 for value in hashes if value == "h1" * 4)
+
 
 class ServerCloud:
     def __init__(self):
@@ -516,6 +560,14 @@ class ServerCloud:
         self._maybe_fail()
         return self.live
 
+    def delete_files(self, ids, pid=""):
+        self._maybe_fail()
+        self.calls.append(("delete", ids, pid))
+
+    def delete_offline(self, hashes, files=False):
+        self._maybe_fail()
+        self.calls.append(("remove", hashes, files))
+
 
 class ServerTests(unittest.TestCase):
     def test_a_busy_history_does_not_break_live_progress(self):
@@ -526,11 +578,64 @@ class ServerTests(unittest.TestCase):
         item = json.loads(body)["items"][0]
         self.assertEqual((item["state"], item["progress"]), ("done", 1))
 
+    def test_drive_and_offline_deletes(self):
+        self.assertEqual(self.post("/api/delete", {"ids": ["42", "43"], "pid": "5"}), (200, {"count": 2}))
+        self.assertEqual(self.cloud.calls[-1], ("delete", ["42", "43"], "5"))
+        self.assertEqual(self.post("/api/delete", {"ids": ["42"], "pid": "../x"})[1], {"count": 1})
+        self.assertEqual(self.cloud.calls[-1], ("delete", ["42"], ""))                 # 不像目录 ID 的 pid 不传
+        self.assertEqual(self.post("/api/delete", {"ids": ["0"]})[0], 400)
+        self.assertEqual(self.post("/api/offline/delete", {"hashes": ["h1" * 4], "files": True}),
+                         (200, {"count": 1, "files": True, "forgotten": 1}))
+        self.assertEqual(self.cloud.calls[-1], ("remove", ["h1" * 4], True))
+        self.assertEqual(self.post("/api/offline/delete", {"hashes": []})[0], 400)
+        self.cloud.error = RuntimeError("115 失败")
+        self.assertEqual(self.post("/api/delete", {"ids": ["42"]})[0], 502)
+
+    def test_nas_files_are_deleted_only_inside_the_download_folder(self):
+        root = Path(self.temporary.name) / "Downloads"
+        (root / "剧集" / "第1季").mkdir(parents=True)
+        outside = Path(self.temporary.name) / "outside.mkv"
+        files = {"done": root / "电影.mkv", "nested": root / "剧集" / "第1季" / "01.mkv", "running": root / "新.mkv",
+                 "keep": root / "剧集" / "说明.txt"}
+        for path in (*files.values(), outside, root / "新.mkv.crdownload"):
+            path.write_bytes(b"x")
+        (root / "链接.mkv").symlink_to(outside)
+        database = Path(self.temporary.name) / "Default/History"
+        database.parent.mkdir()
+        connection = sqlite3.connect(database)
+        connection.execute("CREATE TABLE downloads (id INTEGER PRIMARY KEY, target_path TEXT, current_path TEXT, "
+                           "received_bytes INT, total_bytes INT, state INT, start_time INT, end_time INT)")
+        rows = [(1, files["done"], 1), (2, files["nested"], 1), (3, files["running"], 0), (4, outside, 1),
+                (5, root / "链接.mkv", 1), (6, root / "早删了.mkv", 1), (7, root / ".." / "outside.mkv", 1)]
+        connection.executemany("INSERT INTO downloads VALUES (?,?,?,1,1,?,?,1)",
+                               [(i, str(p), str(p) + ".crdownload" if state == 0 else str(p), state, 1000 - i)
+                                for i, p, state in rows])
+        connection.commit()
+        connection.close()
+        self.app.download_root = root
+        listed = json.loads(self.request("GET", "/api/local?limit=3")[2])["downloads"]
+        self.assertEqual(len(listed), 3)
+        status, result = self.post("/api/local/delete", {"ids": [1, 2, 3, 4, 5, 6, 7, 99]})
+        self.assertEqual(status, 200)
+        self.assertEqual([item["id"] for item in result["deleted"]], [1, 2])
+        self.assertEqual([item["id"] for item in result["missing"]], [6])
+        self.assertEqual({item["id"]: item["error"] for item in result["failed"]},     # 5 是指到目录外的符号链接
+                         {3: "还在下载，先在 115 浏览器里取消", 4: "文件不在下载目录里", 5: "文件不在下载目录里",
+                          7: "文件不在下载目录里", 99: "下载记录里没有它"})
+        self.assertFalse(files["done"].exists())
+        self.assertFalse((root / "剧集" / "第1季").exists())                           # 删空的文件夹一起删
+        self.assertTrue(files["keep"].exists() and files["running"].exists() and outside.exists())
+        self.assertTrue((root / "链接.mkv").is_symlink())
+        exists = {row["id"]: row["exists"] for row in json.loads(self.request("GET", "/api/local?limit=50")[2])["downloads"]}
+        self.assertEqual((exists[1], exists[3]), (False, True))
+        self.assertEqual(self.post("/api/local/delete", {"ids": []})[0], 400)
+        self.assertEqual(self.request("GET", "/api/local?limit=x")[0], 400)
+
     def setUp(self):
         self.cloud, self.watcher = ServerCloud(), FakeWatcher()
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        app = server.App(self.cloud, self.watcher, "115", auth.encode("Check123"), self.temporary.name)
+        self.app = app = server.App(self.cloud, self.watcher, "115", auth.encode("Check123"), self.temporary.name)
         self.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.handler_for(app))
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
         self.addCleanup(self.httpd.server_close)
@@ -562,7 +667,7 @@ class ServerTests(unittest.TestCase):
     def test_complete_reference_and_openapi_cover_every_operation(self):
         spec = json.loads(self.request("GET", "/openapi.json")[2])
         docs = json.loads(self.request("GET", "/api/endpoints")[2])
-        self.assertEqual(len(docs["endpoints"]), 12)
+        self.assertEqual(len(docs["endpoints"]), 15)
         self.assertEqual(spec["security"], [{"desktopBasic": []}])
         for item in docs["endpoints"]:
             operation = spec["paths"][item["path"]][item["method"].lower()]
@@ -934,7 +1039,7 @@ class CliTests(unittest.TestCase):
         self.cloud, self.watcher = ServerCloud(), FakeWatcher()
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        app = server.App(self.cloud, self.watcher, "115", auth.encode("Check123"), self.temporary.name)
+        self.app = app = server.App(self.cloud, self.watcher, "115", auth.encode("Check123"), self.temporary.name)
         self.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.handler_for(app))
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
         self.addCleanup(self.httpd.server_close)

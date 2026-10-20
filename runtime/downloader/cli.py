@@ -167,7 +167,26 @@ def show_transfers(data, _):
 
 def show_local(data, _):
     for row in data.get("downloads") or []:
-        print(f"  {row.get('state', ''):<8} {size(row.get('received'))}/{size(row.get('total'))}  {row.get('name', '')}")
+        gone = "（已不在 NAS 上）" if row.get("exists") is False else ""
+        print(f"  {row.get('id', ''):>6} {row.get('state', ''):<8} {size(row.get('received'))}/{size(row.get('total'))}  "
+              f"{row.get('name', '')}{gone}")
+
+
+def show_delete(data, _):
+    print(f"已删除 {data.get('count', 0)} 项，在 115 回收站里可以恢复")
+
+
+def show_remove(data, _):
+    print(f"已删除 {data.get('count', 0)} 个云下载任务" + ("，连同存到网盘的文件" if data.get("files") else ""))
+
+
+def show_local_delete(data, _):
+    names = lambda key: "、".join(item.get("name") or str(item.get("id")) for item in data.get(key) or [])  # noqa: E731
+    print(f"已从 NAS 删除 {len(data.get('deleted') or [])} 个文件" + (f"：{names('deleted')}" if data.get("deleted") else ""))
+    if data.get("missing"):
+        print("本来就不在：" + names("missing"))
+    for item in data.get("failed") or []:
+        print(f"没删：{item.get('name') or item.get('id')}（{item.get('error', '')}）")
 
 
 def show_watch(data, _):
@@ -226,7 +245,13 @@ def run(args):
     if args.command == "transfers":
         return api.request("GET", "/api/transfers"), show_transfers
     if args.command == "local":
-        return api.request("GET", "/api/local"), show_local
+        return api.request("GET", "/api/local", query={"limit": args.limit}), show_local
+    if args.command == "delete":
+        return api.request("POST", "/api/delete", _clean({"ids": args.ids, "pid": args.pid})), show_delete
+    if args.command == "remove":
+        return api.request("POST", "/api/offline/delete", {"hashes": args.hashes, "files": args.files}), show_remove
+    if args.command == "local-delete":
+        return api.request("POST", "/api/local/delete", {"ids": args.ids}), show_local_delete
     if args.command == "watch":
         return api.request("GET", "/api/watch"), show_watch
     if args.command == "raw":
@@ -306,7 +331,16 @@ def build_parser():
     share.add_argument("--code", help="提取码")
     share.add_argument("--items", help='勾选条目的 JSON：[{"n":..,"sc":..,"is_dir":false}]')
     sub.add_parser("transfers", help="NAS 实时传输进度")
-    sub.add_parser("local", help="NAS 本地下载记录")
+    local = sub.add_parser("local", help="NAS 本地下载记录")
+    local.add_argument("--limit", type=int, help="最多几条，默认 30")
+    delete = sub.add_parser("delete", help="删除网盘文件或文件夹（进 115 回收站）")
+    delete.add_argument("ids", nargs="+", help="目录列表里的 id")
+    delete.add_argument("--pid", help="它们所在的目录 ID")
+    remove = sub.add_parser("remove", help="删除云下载任务")
+    remove.add_argument("hashes", nargs="+", help="任务 info_hash")
+    remove.add_argument("--files", action="store_true", help="连同任务存到网盘的文件一起删")
+    local_delete = sub.add_parser("local-delete", help="删除 NAS 上下载好的文件（不能恢复）")
+    local_delete.add_argument("ids", nargs="+", type=int, help="local 列表里的 id")
     sub.add_parser("watch", help="等待下到 NAS 的任务")
     raw = sub.add_parser("raw", help="直接调用任意接口")
     raw.add_argument("method")

@@ -49,6 +49,14 @@ class Watcher:
         self.recent = now
         self.wake.set()
 
+    def forget(self, hashes):
+        """Stop watching tasks that were deleted; returns how many were being watched."""
+        with self.lock:
+            removed = [key for key in hashes if self.items.pop(key, None) is not None]
+            if removed:
+                self._save()
+        return len(removed)
+
     def delay(self):
         recent = self.recent is not None and self.clock() - self.recent < FAST_SECONDS
         return FAST_INTERVAL if recent else self.interval

@@ -127,6 +127,22 @@ SHARE_DOWNLOAD = _page_function("""
   if (args.receive_code) payload.receive_code = args.receive_code;
   browserInterface.CreateSharedTask(encodeURIComponent(JSON.stringify(payload)));
   return {state: true};""")
+# 115's web drive deletes into the recycle bin: POST webapi.115.com/rb/delete with fid[0], fid[1], ...
+DELETE_FILES = _page_function("""
+  if (!uid) return {login: false};
+  const body = new URLSearchParams();
+  args.ids.forEach((id, index) => body.append("fid[" + index + "]", id));
+  if (args.pid) body.append("pid", args.pid);
+  body.append("ignore_warn", "1");
+  const result = await getJSON("https://webapi.115.com/rb/delete", {method: "POST", body});
+  return result.not_json ? {login: false} : result;""")
+# The offline plugin's task_del: hash[0], hash[1], ...; flag=1 also deletes what the tasks saved in the drive.
+DELETE_OFFLINE = _page_function("""
+  if (!uid) return {login: false};
+  const fields = {flag: args.files ? "1" : "0"};
+  args.hashes.forEach((hash, index) => { fields["hash[" + index + "]"] = hash; });
+  const result = await lixian("task_del", fields);
+  return result.not_json ? {login: false} : result;""")
 # Read-only: the browser's transfer list page (transfer-frame) keeps live state for each download.
 # _status: 0 downloading, 1 paused, 2 finished, 3 failed, 4 waiting.
 TRANSFERS = """async function () {
@@ -319,6 +335,20 @@ class Cloud115:
 
     def download(self, items):
         self._call(DOWNLOAD, {"items": items})
+
+    def delete_files(self, ids, pid=""):
+        """Drive files or folders -> 115's recycle bin."""
+        result = self._call(DELETE_FILES, {"ids": list(ids), "pid": str(pid or "")})
+        if not result.get("state"):
+            raise RuntimeError(_message(result, "删除网盘文件失败"))
+        return result
+
+    def delete_offline(self, hashes, files=False):
+        """Offline tasks, and with files=True what they saved in the drive."""
+        result = self._call(DELETE_OFFLINE, {"hashes": list(hashes), "files": bool(files)})
+        if not result.get("state"):
+            raise RuntimeError(_message(result, "删除云下载任务失败"))
+        return result
 
     def offline_result(self, task):
         """The cloud file or folder a finished offline task produced, or None while it is not ready."""

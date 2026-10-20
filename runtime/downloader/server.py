@@ -50,6 +50,8 @@ ERRORS = ((ValueError, HTTPStatus.BAD_REQUEST), (client.NotLoggedIn, HTTPStatus.
           (RuntimeError, HTTPStatus.BAD_GATEWAY))
 
 ENDPOINTS = apidocs.ENDPOINTS
+# Where the 115 Browser saves to (compose mounts the NAS folder here); NAS deletes stay inside it.
+DOWNLOAD_ROOT = Path(os.environ.get("DOWNLOAD_ROOT") or "/opt/Downloads")
 
 
 class NotFound(Exception):
@@ -140,6 +142,57 @@ def transfer_view(item):
             "received": "" if amount(received) == 0 else _tidy(received),
             "total": "" if total in ("unknown", "大小未知") else _tidy(total),
             "folder": bool(item.get("folder")), "error": item.get("error") or "", "ended": item.get("ended") or ""}
+
+
+def delete_local(profile_dir, ids, root):
+    """Delete NAS files the 115 Browser downloaded, picked by their download-history id.
+
+    Only regular files inside the download folder are removed, never a running download or a
+    symlink; folders that become empty are removed up to the download folder itself. The
+    history entries stay (the browser holds that database), so GET /api/local shows exists=false.
+    """
+    root = Path(root).resolve()
+    rows = {row["id"]: row for row in history.recent_downloads(profile_dir, limit=5000)}
+    deleted, missing, failed = [], [], []
+    for identity in ids:
+        row = rows.get(identity)
+        if row is None:
+            failed.append({"id": identity, "name": "", "error": "下载记录里没有它"})
+            continue
+        name = row["name"]
+        if row["key"] == "downloading":
+            failed.append({"id": identity, "name": name, "error": "还在下载，先在 115 浏览器里取消"})
+            continue
+        removed, inside = False, True
+        for raw in dict.fromkeys(p for p in (row["path"], row.get("current_path")) if p):
+            path = Path(raw)
+            real = path.resolve()
+            if real == root or not real.is_relative_to(root):
+                inside = False
+                continue
+            if path.is_symlink() or not real.is_file():
+                continue
+            try:
+                real.unlink()
+            except OSError as error:
+                failed.append({"id": identity, "name": name, "error": error.strerror or str(error)})
+                break
+            removed = True
+            parent = real.parent
+            while parent != root and parent.is_relative_to(root):
+                try:
+                    parent.rmdir()          # only succeeds when empty
+                except OSError:
+                    break
+                parent = parent.parent
+        else:
+            if removed:
+                deleted.append({"id": identity, "name": name})
+            elif not inside:
+                failed.append({"id": identity, "name": name, "error": "文件不在下载目录里"})
+            else:
+                missing.append({"id": identity, "name": name})
+    return {"deleted": deleted, "missing": missing, "failed": failed}
 
 
 def disk_bytes(row):
@@ -239,9 +292,10 @@ def _query_order(query):
 
 
 class App:
-    def __init__(self, cloud, watcher, user, encoded, profile_dir, clock=time.monotonic):
+    def __init__(self, cloud, watcher, user, encoded, profile_dir, clock=time.monotonic, download_root=None):
         self.cloud, self.watcher, self.user, self.encoded = cloud, watcher, user, encoded
         self.profile_dir, self.clock = profile_dir, clock
+        self.download_root = Path(download_root or DOWNLOAD_ROOT)
         self.accepted = set()
         self.failures = {}
         self.samples = {}  # download id -> (time, bytes on disk, smoothed bytes per second)
@@ -347,7 +401,9 @@ class App:
             return transfers_view([history_transfer(row, index, *written.get(str(row.get("id")), (None, 0.0)))
                                    for index, row in enumerate(rows)], False)
         if path == "/api/local":
-            return {"downloads": history.recent_downloads(self.profile_dir)}
+            limit = max(1, min(int((query.get("limit") or ["30"])[0]), 500))
+            rows = history.recent_downloads(self.profile_dir, limit=limit)
+            return {"downloads": [{**row, "exists": os.path.isfile(row["path"])} for row in rows]}
         if path == "/api/watch":
             return {"tasks": self.watcher.snapshot()}
         raise NotFound
@@ -398,6 +454,18 @@ class App:
             self.cloud.download(items)
             return {"count": len(items), "names": [item["n"] for item in items][:20],
                     "name": items[0]["n"], "is_dir": items[0]["is_dir"]}
+        if path == "/api/delete":
+            ids = links.file_ids(body.get("ids"))
+            pid = body.get("pid")
+            pid = pid if isinstance(pid, str) and pid.isdigit() else ""
+            self.cloud.delete_files(ids, pid)
+            return {"count": len(ids)}
+        if path == "/api/offline/delete":
+            hashes = links.task_hashes(body.get("hashes"))
+            self.cloud.delete_offline(hashes, bool(body.get("files")))
+            return {"count": len(hashes), "files": bool(body.get("files")), "forgotten": self.watcher.forget(hashes)}
+        if path == "/api/local/delete":
+            return delete_local(self.profile_dir, links.download_ids(body.get("ids")), self.download_root)
         if path == "/api/share":
             code = body.get("receive_code")
             share_code, receive_code, page = links.share_link(_text(body.get("url")), code if isinstance(code, str) else "")

@@ -3976,10 +3976,10 @@
       "get": {
         "operationId": "local",
         "summary": "NAS 本地下载记录",
-        "description": "最近 30 条浏览器下载历史；received/total 为字节。以 key=done 为完成依据；并非 NAS 全盘文件列表。",
+        "description": "浏览器下载历史，默认最近 30 条；received/total 为字节。以 key=done 为完成依据；并非 NAS 全盘文件列表。exists=false 表示文件已不在 NAS 上（被删或移走）。",
         "responses": {
           "200": {
-            "description": "downloads[]: id、name、path（容器内路径）、received/total（字节）、state（中文）、key（downloading/done/canceled/failed）、started/finished（Unix 秒或 null）",
+            "description": "downloads[]: id、name、path（容器内路径）、received/total（字节）、state（中文）、key（downloading/done/canceled/failed）、started/finished（Unix 秒或 null）、exists（文件还在不在）",
             "content": {
               "application/json": {
                 "schema": {
@@ -4028,6 +4028,9 @@
                               "integer",
                               "null"
                             ]
+                          },
+                          "exists": {
+                            "type": "boolean"
                           }
                         }
                       }
@@ -4045,7 +4048,8 @@
                       "state": "已完成",
                       "key": "done",
                       "started": 1760000000,
-                      "finished": 1760000001
+                      "finished": 1760000001,
+                      "exists": true
                     }
                   ]
                 }
@@ -4280,6 +4284,953 @@
                 "example": {
                   "error": "浏览器未启动或不可用"
                 }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "最多返回几条，默认 30，最多 500",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 30
+            },
+            "example": 30
+          }
+        ]
+      }
+    },
+    "/api/delete": {
+      "post": {
+        "operationId": "delete",
+        "summary": "删除网盘文件或文件夹（进 115 回收站）",
+        "description": "删除后进 115 回收站，可在 115 里恢复；文件夹连同里面的内容一起删。ids 不可空，最多 1150 项。",
+        "responses": {
+          "200": {
+            "description": "count: 已删除（进回收站）的项数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "example": {
+                  "count": 1
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数无效、无效 JSON、路径/任务不存在或云下载未就绪",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "参数无效、无效 JSON、路径/任务不存在或云下载未就绪"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要 HTTP Basic 认证或凭据错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "需要 HTTP Basic 认证或凭据错误"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "POST 的 Origin 与 Host 不匹配",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "POST 的 Origin 与 Host 不匹配"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "不存在的接口",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "不存在的接口"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "JSON 请求体超过 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "JSON 请求体超过 64 KiB"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "POST Content-Type 必须为 application/json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "POST Content-Type 必须为 application/json"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "同一来源 10 次认证失败后等待 10 分钟",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "同一来源 10 次认证失败后等待 10 分钟"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "115 未登录或需要安全验证，在远程桌面完成后再调用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "115 未登录或需要安全验证，在远程桌面完成后再调用"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "内部错误"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "115 上游接口或浏览器调用失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "115 上游接口或浏览器调用失败"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "浏览器未启动或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "浏览器未启动或不可用"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 1150,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[0-9]{1,32}$"
+                    },
+                    "description": "从目录响应原样复制 items[].id；不能是网盘根 0"
+                  },
+                  "pid": {
+                    "type": "string",
+                    "pattern": "^[0-9]{0,32}$",
+                    "description": "所在目录 ID，可省略"
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              },
+              "example": {
+                "ids": [
+                  "42"
+                ],
+                "pid": "0"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/offline/delete": {
+      "post": {
+        "operationId": "remove",
+        "summary": "删除云下载任务",
+        "description": "只删云下载任务记录；files=true 时 115 同时删除任务存到网盘的文件（进回收站）。也会停止自动下到 NAS 的跟踪。",
+        "responses": {
+          "200": {
+            "description": "count / files: 删除的任务数 / 是否连同网盘文件一起删; forgotten: 其中原本在等着下到 NAS 的任务数",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "files": {
+                      "type": "boolean"
+                    },
+                    "forgotten": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "example": {
+                  "count": 1,
+                  "files": false,
+                  "forgotten": 0
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数无效、无效 JSON、路径/任务不存在或云下载未就绪",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "参数无效、无效 JSON、路径/任务不存在或云下载未就绪"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要 HTTP Basic 认证或凭据错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "需要 HTTP Basic 认证或凭据错误"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "POST 的 Origin 与 Host 不匹配",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "POST 的 Origin 与 Host 不匹配"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "不存在的接口",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "不存在的接口"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "JSON 请求体超过 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "JSON 请求体超过 64 KiB"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "POST Content-Type 必须为 application/json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "POST Content-Type 必须为 application/json"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "同一来源 10 次认证失败后等待 10 分钟",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "同一来源 10 次认证失败后等待 10 分钟"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "115 未登录或需要安全验证，在远程桌面完成后再调用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "115 未登录或需要安全验证，在远程桌面完成后再调用"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "内部错误"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "115 上游接口或浏览器调用失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "115 上游接口或浏览器调用失败"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "浏览器未启动或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "浏览器未启动或不可用"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "hashes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[0-9A-Za-z]{8,64}$"
+                    }
+                  },
+                  "files": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "true 时 115 同时删除任务存到网盘的文件"
+                  }
+                },
+                "required": [
+                  "hashes"
+                ]
+              },
+              "example": {
+                "hashes": [
+                  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                ],
+                "files": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/local/delete": {
+      "post": {
+        "operationId": "local-delete",
+        "summary": "删除 NAS 上下载好的文件",
+        "description": "直接从 NAS 删除，不能恢复。只删下载目录里的普通文件，下载中的、符号链接和目录外的都不删；删空的文件夹一并删掉。下载历史记录保留，local 里显示 exists=false。",
+        "responses": {
+          "200": {
+            "description": "deleted[] / missing[]: 已删除的 / 文件本来就不在的 {id,name}; failed[]: 没删的 {id,name,error}：下载中、不在下载目录里或删除出错",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "missing": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "failed": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "deleted": [
+                    {
+                      "id": 42,
+                      "name": "example.mkv"
+                    }
+                  ],
+                  "missing": [],
+                  "failed": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数无效、无效 JSON、路径/任务不存在或云下载未就绪",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "参数无效、无效 JSON、路径/任务不存在或云下载未就绪"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要 HTTP Basic 认证或凭据错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "需要 HTTP Basic 认证或凭据错误"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "POST 的 Origin 与 Host 不匹配",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "POST 的 Origin 与 Host 不匹配"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "不存在的接口",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "不存在的接口"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "JSON 请求体超过 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "JSON 请求体超过 64 KiB"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "POST Content-Type 必须为 application/json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "POST Content-Type 必须为 application/json"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "同一来源 10 次认证失败后等待 10 分钟",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "同一来源 10 次认证失败后等待 10 分钟"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "115 未登录或需要安全验证，在远程桌面完成后再调用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "115 未登录或需要安全验证，在远程桌面完成后再调用"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "内部错误"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "115 上游接口或浏览器调用失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "115 上游接口或浏览器调用失败"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "浏览器未启动或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "浏览器未启动或不可用"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "items": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "description": "GET /api/local 的 downloads[].id"
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              },
+              "example": {
+                "ids": [
+                  42
+                ]
               }
             }
           }

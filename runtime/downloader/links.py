@@ -188,6 +188,51 @@ def task_hash(value):
     raise ValueError("云下载任务 ID 无效")
 
 
+_FILE_ID = re.compile(r"[0-9]{1,32}")
+MAX_TASKS, MAX_LOCAL = 100, 200
+
+
+def file_ids(raw):
+    """Drive files or folders to delete, by the items[].id a listing gives; never the drive root."""
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("请先勾选要删除的内容")
+    if len(raw) > MAX_ITEMS:
+        raise ValueError(f"一次最多删除 {MAX_ITEMS} 项")
+    ids = []
+    for value in raw:
+        value = str(value) if isinstance(value, (int, str)) and not isinstance(value, bool) else ""
+        if not _FILE_ID.fullmatch(value) or int(value) == 0:
+            raise ValueError("要删除的条目 ID 无效")
+        ids.append(value)
+    return list(dict.fromkeys(ids))
+
+
+def task_hashes(raw):
+    """Offline tasks to delete, by info_hash."""
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("请先选择要删除的云下载任务")
+    if len(raw) > MAX_TASKS:
+        raise ValueError(f"一次最多删除 {MAX_TASKS} 个云下载任务")
+    return list(dict.fromkeys(task_hash(value) for value in raw))
+
+
+def download_ids(raw):
+    """NAS downloads to delete, by the downloads[].id that GET /api/local gives."""
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("请先选择要删除的 NAS 文件")
+    if len(raw) > MAX_LOCAL:
+        raise ValueError(f"一次最多删除 {MAX_LOCAL} 个 NAS 文件")
+    ids = []
+    for value in raw:
+        text = str(value) if isinstance(value, (int, str)) and not isinstance(value, bool) else ""
+        if not text.isdigit() or int(text) <= 0:
+            raise ValueError("NAS 下载记录 ID 无效")
+        ids.append(int(text))
+    return list(dict.fromkeys(ids))
+
+
 def _name(value):
     # Names become file names on the NAS; refuse anything that could leave the download folder.
     if (not isinstance(value, str) or not value or len(value) > 255 or value in (".", "..")
