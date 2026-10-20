@@ -2,6 +2,17 @@
 
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)：主版本号.次版本号.修订号。镜像标签的含义见 README 的“版本与发布”。
 
+## v1.1.0 - 2026-10-21
+
+### 新功能
+
+- 下载接口可以删除了：
+  - 网盘里的文件或文件夹：`POST /api/delete`，删进 115 回收站，还能恢复。
+  - 云下载任务：`POST /api/offline/delete`，可以选择连同存到网盘的文件一起删；自动下到 NAS 的跟踪也一并取消。
+  - NAS 上下载好的文件：`POST /api/local/delete`，按下载记录删除，不能恢复。只删下载目录里的普通文件，正在下载的、符号链接和目录外的都不删；删空的文件夹一起删掉。
+- `GET /api/local` 可以用 `limit` 一次取最多 500 条，每条带 `exists`，表示文件还在不在 NAS 上。
+- `115dl` 命令行新增 `delete`、`remove`、`local-delete`，`local` 加了 `--limit`。接口文档、OpenAPI 和 `115-download` skill 已同步更新。
+
 ## v1.0.1 - 2026-10-14
 
 ### 修复
