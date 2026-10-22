@@ -38,6 +38,9 @@ DISPLAY_KEYS = {"finished": "done", "downloading": "downloading", "waiting": "wa
 # GET /api/offline?state=: 115's own list filters; recent = the newest page of running, failed and done.
 OFFLINE_LISTS = {"running": client.RUNNING, "failed": client.FAILED, "done": client.DONE, "all": 0}
 RECENT = ("running", "failed", "done")
+# Searching cloud tasks reads a whole list (115 has no task search): 30 tasks a page, five pages a round
+# trip, at most 100 pages. Paging and typing reuse a scan for a minute; adding or deleting starts over.
+OFFLINE_PAGE, SCAN_BATCH, SCAN_PAGES, SCAN_SECONDS = 30, 5, 100, 60
 TRANSFER_KEYS = {0: "downloading", 1: "paused", 2: "done", 3: "failed", 4: "waiting"}
 ACTIVE = ("downloading", "verifying", "waiting")
 _AMOUNT = re.compile(r"\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGTP]?)(?:i?B)?", re.IGNORECASE)
@@ -312,6 +315,9 @@ class App:
         self.failures = {}
         self.samples = {}  # download id -> (time, bytes on disk, smoothed bytes per second)
         self.lock = threading.Lock()
+        self.scans = {}  # 115 list stat -> (time, every task in it), for searching cloud tasks
+        self.scan_epoch = 0  # moves when tasks are added or deleted; a scan begun before that is not kept
+        self.scanning = threading.Lock()  # one scan at a time; requests typed meanwhile reuse it
 
     def _measure(self, rows):
         """Bytes on disk and speed for running downloads, from successive polls."""
@@ -336,6 +342,43 @@ class App:
             for key in [key for key in self.samples if key not in measured]:
                 del self.samples[key]
         return measured
+
+    def _scan(self, stat):
+        """Every task of one of 115's lists, newest first, read at most once a minute."""
+        with self.scanning:
+            with self.lock:
+                kept, epoch = self.scans.get(stat), self.scan_epoch
+            if kept and self.clock() - kept[0] < SCAN_SECONDS:
+                return kept[1]
+            first = self.cloud.offline_tasks(1, stat)
+            tasks = list(first.get("tasks") or [])
+            pages = int(first.get("page_count") or 0) or -(-int(first.get("count") or 0) // OFFLINE_PAGE)
+            pages = min(max(pages, 1), SCAN_PAGES)
+            for start in range(2, pages + 1, SCAN_BATCH):
+                for result in self.cloud.offline_lists([(stat, page) for page in range(start, min(start + SCAN_BATCH, pages + 1))]):
+                    tasks.extend(result.get("tasks") or [])
+            seen, unique = set(), []
+            # Tasks added while reading shift the pages, so one can come twice.
+            for task in sorted(tasks, key=lambda task: -_number(task.get("add_time"))):
+                key = task.get("info_hash") or id(task)
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(task)
+            with self.lock:
+                if self.scan_epoch == epoch:
+                    self.scans[stat] = (self.clock(), unique)
+            return unique
+
+    def forget_scans(self):
+        with self.lock:
+            self.scans.clear()
+            self.scan_epoch += 1
+
+    def search_offline(self, stat, q):
+        """Tasks whose name contains q, ignoring case, or whose info_hash is q."""
+        words = q.casefold()
+        return [task for task in self._scan(stat)
+                if words in (task.get("name") or "").casefold() or words == (task.get("info_hash") or "").casefold()]
 
     def check_login(self, header, address):
         """Return None when authorized, else the HTTP status to send."""
@@ -374,9 +417,17 @@ class App:
             return apidocs.openapi()
         if path == "/api/offline":
             page = max(1, min(int((query.get("page") or ["1"])[0]), 100))
+            words = (query.get("q") or [""])[0]
             # page on its own keeps paging the unfiltered list, as older clients do.
-            state = (query.get("state") or ["all" if page > 1 else "recent"])[0]
-            if state == "recent":
+            state = (query.get("state") or ["all" if page > 1 or words.strip() else "recent"])[0]
+            if words.strip():
+                q = links.search_query(words)
+                if state not in OFFLINE_LISTS and state != "recent":
+                    raise ValueError("state 只能是 recent、running、failed、done 或 all")
+                matches = self.search_offline(OFFLINE_LISTS.get(state, 0), q)  # recent searches every task
+                tasks = matches[(page - 1) * OFFLINE_PAGE:page * OFFLINE_PAGE]
+                extra = {"count": len(matches), "q": q}
+            elif state == "recent":
                 results = self.cloud.offline_lists([(OFFLINE_LISTS[name], 1) for name in RECENT])
                 # A task that finishes between the requests keeps its later state.
                 latest = {task.get("info_hash") or id(task): task for result in results for task in result.get("tasks") or []}
@@ -418,6 +469,10 @@ class App:
             return {"downloads": [{**row, "exists": os.path.isfile(row["path"])} for row in rows]}
         if path == "/api/watch":
             return {"tasks": self.watcher.snapshot()}
+        if path == "/api/search":
+            q = links.search_query((query.get("q") or [""])[0])
+            return self.cloud.search_drive(q, links.offset((query.get("offset") or ["0"])[0]),
+                                           links.folder_id((query.get("cid") or ["0"])[0]))
         raise NotFound
 
     def _share(self, body, cid="", offset=0):
@@ -438,6 +493,7 @@ class App:
                       for item in result.get("result") or [] if not item.get("state")]
             if body.get("to_nas"):
                 self.watcher.watch(added)
+            self.forget_scans()
             return {"added": len(added) if result.get("result") else len(urls), "failed": failed,
                     "to_nas": bool(body.get("to_nas")),
                     "tasks": [{"hash": item["info_hash"], "name": item.get("name") or item.get("url", "")}
@@ -475,6 +531,7 @@ class App:
         if path == "/api/offline/delete":
             hashes = links.task_hashes(body.get("hashes"))
             self.cloud.delete_offline(hashes, bool(body.get("files")))
+            self.forget_scans()
             return {"count": len(hashes), "files": bool(body.get("files")), "forgotten": self.watcher.forget(hashes)}
         if path == "/api/local/delete":
             return delete_local(self.profile_dir, links.download_ids(body.get("ids")), self.download_root)

@@ -7,6 +7,7 @@ Examples:
   115dl add 'magnet:?xt=urn:btih:...' --to-nas
   115dl inspect '/电影/某文件夹'
   115dl browse --cid 0 --sort time
+  115dl search 关键词                         # search the whole drive by name
   115dl download --path '/电影/某文件夹'
   115dl share 'https://115cdn.com/s/xxx?password=abcd'
   115dl transfers
@@ -137,6 +138,16 @@ def show_listing(data, _):
         print("  结果:", data["result"].get("n"))
 
 
+def show_search(data, _):
+    print(f"搜索「{data.get('q', '')}」共 {data.get('count', 0)} 项"
+          + ("（已截断，可用 --offset 翻页）" if data.get("truncated") else ""))
+    for item in data.get("items") or []:
+        mark = "D" if item.get("is_dir") else "-"
+        where = item.get("parent_name") or item.get("parent") or ""
+        print(f"  {mark} {('' if item.get('is_dir') else size(item.get('size'))):>10}  {item.get('id', ''):<20} "
+              f"{item.get('pc', ''):<18} {item.get('name', '')}  （在 {where}）")
+
+
 def show_offline(data, _):
     for task in data.get("tasks") or []:
         extra = f" {task['percent']:.0f}%" if task.get("state") == "downloading" else ""
@@ -222,7 +233,8 @@ def run(args):
     if args.command == "add":
         return api.request("POST", "/api/offline", {"links": "\n".join(args.links), "to_nas": args.to_nas}), show_add
     if args.command == "offline":
-        return api.request("GET", "/api/offline", query={"state": args.state, "page": args.page}), show_offline
+        query = {"state": args.state, "page": args.page, "q": args.q}
+        return api.request("GET", "/api/offline", query=query), show_offline
     if args.command == "content":
         return api.request("GET", "/api/offline/content",
                            query={"hash": args.hash, "sort": args.sort, "asc": _asc(args.asc)}), show_listing
@@ -233,6 +245,8 @@ def run(args):
         body = {"kind": "share" if args.share else "drive", "url": args.share, "cid": args.cid,
                 "receive_code": args.code, "offset": args.offset, "sort": args.sort, "asc": args.asc}
         return api.request("POST", "/api/browse", _clean(body)), show_listing
+    if args.command == "search":
+        return api.request("GET", "/api/search", query={"q": args.q, "offset": args.offset, "cid": args.cid}), show_search
     if args.command == "download":
         if not args.path and not args.items:
             raise ApiError("需要 --path 或 --items")
@@ -311,6 +325,7 @@ def build_parser():
     offline.add_argument("--state", choices=("recent", "running", "failed", "done", "all"),
                          help="默认 recent：进行中、失败、已完成各取最新一页")
     offline.add_argument("--page", type=int, help="翻页，用于 running/failed/done/all")
+    offline.add_argument("--q", help="按名字搜索任务（不区分大小写），每页 30 个")
     content = sub.add_parser("content", help="云下载完成后的内容")
     content.add_argument("hash")
     _sorting(content)
@@ -324,6 +339,10 @@ def build_parser():
     browse.add_argument("--code", help="分享提取码")
     browse.add_argument("--offset", type=int)
     _sorting(browse)
+    search = sub.add_parser("search", help="按名字搜索网盘文件和文件夹")
+    search.add_argument("q", metavar="关键词")
+    search.add_argument("--offset", type=int, help="翻页：从第几项开始")
+    search.add_argument("--cid", help="只搜这个目录，默认整个网盘")
     download = sub.add_parser("download", help="下载网盘内容到 NAS")
     download.add_argument("--path", help="网盘路径（整项下载）")
     download.add_argument("--items", help='勾选条目的 JSON：[{"n":..,"pc":..,"is_dir":false}]')

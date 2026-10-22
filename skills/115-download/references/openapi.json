@@ -1704,14 +1704,379 @@
         }
       }
     },
+    "/api/search": {
+      "get": {
+        "operationId": "search",
+        "summary": "按名字搜索网盘文件和文件夹",
+        "description": "用 115 网盘自己的搜索按名字匹配，每页最多 100 项。items 与目录响应相同：下载用 {n: name, pc, is_dir}，删除用 ids=[id]、pid=parent；文件夹可以用 cid 浏览。parent_name 在 115 没给时为空字符串。",
+        "responses": {
+          "200": {
+            "description": "kind / q: 固定为 search / 实际搜索的关键词（去掉首尾空白）; count / offset / truncated: 匹配总数、本页起始位置、是否还有下一页；下一页 offset = 当前 offset + items.length; items[]: id、name、pc、is_dir、size（字节；文件夹为 0）、time（Unix 秒）、cid（仅文件夹有值）; items[].parent / parent_name: 所在目录 ID（删除时作为 pid）/ 所在目录名，115 没给时为空字符串",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "search"
+                    },
+                    "q": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "pc": {
+                            "type": "string"
+                          },
+                          "is_dir": {
+                            "type": "boolean"
+                          },
+                          "size": {
+                            "type": "integer"
+                          },
+                          "time": {
+                            "type": "integer"
+                          },
+                          "cid": {
+                            "type": "string"
+                          },
+                          "parent": {
+                            "type": "string"
+                          },
+                          "parent_name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "items"
+                  ]
+                },
+                "example": {
+                  "kind": "search",
+                  "q": "example",
+                  "count": 1,
+                  "offset": 0,
+                  "truncated": false,
+                  "items": [
+                    {
+                      "id": "42",
+                      "name": "example.mkv",
+                      "pc": "abc123",
+                      "is_dir": false,
+                      "size": 1024,
+                      "time": 1760000000,
+                      "cid": "",
+                      "parent": "7",
+                      "parent_name": "电影"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数无效、无效 JSON、路径/任务不存在或云下载未就绪",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "参数无效、无效 JSON、路径/任务不存在或云下载未就绪"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要 HTTP Basic 认证或凭据错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "需要 HTTP Basic 认证或凭据错误"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "POST 的 Origin 与 Host 不匹配",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "POST 的 Origin 与 Host 不匹配"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "不存在的接口",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "不存在的接口"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "JSON 请求体超过 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "JSON 请求体超过 64 KiB"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "POST Content-Type 必须为 application/json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "POST Content-Type 必须为 application/json"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "同一来源 10 次认证失败后等待 10 分钟",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "同一来源 10 次认证失败后等待 10 分钟"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "115 未登录或需要安全验证，在远程桌面完成后再调用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "115 未登录或需要安全验证，在远程桌面完成后再调用"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "内部错误"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "115 上游接口或浏览器调用失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "115 上游接口或浏览器调用失败"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "浏览器未启动或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "浏览器未启动或不可用"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "关键词，按名字匹配",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "description": "首尾空白会去掉"
+            },
+            "example": "example"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "翻页位置，下一页 = offset + items.length",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000,
+              "default": 0
+            },
+            "example": 0
+          },
+          {
+            "name": "cid",
+            "in": "query",
+            "required": false,
+            "description": "只搜这个目录，默认 0（整个网盘）",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{1,32}$",
+              "default": "0"
+            }
+          }
+        ]
+      }
+    },
     "/api/offline": {
       "get": {
         "operationId": "offline",
         "summary": "云下载任务列表",
-        "description": "默认 recent 按添加时间从新到旧，新提交的任务无论进行中、失败还是已完成都在其中；翻看更早的任务用 state + page。云端完成不代表 NAS 已完成。使用 hash 查询内容，ready=true 后再下载。",
+        "description": "默认 recent 按添加时间从新到旧，新提交的任务无论进行中、失败还是已完成都在其中；翻看更早的任务用 state + page。云端完成不代表 NAS 已完成。使用 hash 查询内容，ready=true 后再下载。q 非空时在服务端读取整个列表后筛选，count 为匹配数；读取结果保留一分钟，添加或删除任务后重新读取。",
         "responses": {
           "200": {
-            "description": "tasks[]: hash、name、status（中文）、state（failed/waiting/downloading/done）、text; tasks[].percent / size / speed / left: 进度 0–100 / 字节 / 字节每秒 / 剩余秒; tasks[].added / folder / ready / auto: 上游时间 / 是否文件夹 / 可否下载 / 自动下载中文状态（可省略）; count: 所选列表的上游任务总数，用于 page 翻页；recent 为三类之和; counts: 仅 recent：{running, failed, done} 各类任务总数",
+            "description": "tasks[]: hash、name、status（中文）、state（failed/waiting/downloading/done）、text; tasks[].percent / size / speed / left: 进度 0–100 / 字节 / 字节每秒 / 剩余秒; tasks[].added / folder / ready / auto: 上游时间 / 是否文件夹 / 可否下载 / 自动下载中文状态（可省略）; count: 所选列表的上游任务总数，用于 page 翻页；recent 为三类之和；搜索时为匹配的任务数; counts: 仅 recent：{running, failed, done} 各类任务总数; q: 仅搜索时：实际搜索的关键词",
             "content": {
               "application/json": {
                 "schema": {
@@ -1791,6 +2156,9 @@
                           "type": "integer"
                         }
                       }
+                    },
+                    "q": {
+                      "type": "string"
                     }
                   }
                 },
@@ -2070,11 +2438,22 @@
             "name": "page",
             "in": "query",
             "required": false,
-            "description": "页码，用于 running/failed/done/all",
+            "description": "页码，用于 running/failed/done/all 和搜索",
             "schema": {
               "type": "integer",
               "default": 1,
               "description": "服务端将页码限制在 1–100；省略 state 且 page>1 时按 all 翻页"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "按名字搜索任务（不区分大小写），每页 30 个",
+            "schema": {
+              "type": "string",
+              "maxLength": 100,
+              "description": "非空时搜索 state 对应列表里的全部任务（省略或 recent 时搜索全部任务）：名字包含 q（不区分大小写）或 info_hash 等于 q 的任务，按添加时间从新到旧，每页 30 个"
             }
           }
         ]

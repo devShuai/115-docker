@@ -135,6 +135,28 @@ def drive_listing(page, order=None):
     return listing
 
 
+def search_listing(page, q, offset=0):
+    """A webapi.115.com/files/search page -> drive-listing-shaped results that also say where each item is.
+
+    parent is the folder an item sits in (a file's cid, a folder's pid), so the items work unchanged with
+    /api/download and with /api/delete (pid = parent); parent_name is 115's dp when it sends one.
+    """
+    items = []
+    for entry in page.get("data") or []:
+        item = drive_item(entry)
+        folder = item["is_dir"]
+        parent = entry.get("pid") if folder else entry.get("cid")
+        items.append({"id": str(entry.get("fid") or entry.get("cid")), "name": item["n"], "pc": item["pc"],
+                      "is_dir": folder, "size": 0 if folder else _size(entry.get("s")),
+                      "time": _size(entry.get("tp") or entry.get("te")), "cid": str(entry.get("cid")) if folder else "",
+                      "parent": "" if parent in (None, "") else str(parent),
+                      "parent_name": entry["dp"] if isinstance(entry.get("dp"), str) else ""})
+    offset = _size(page.get("offset")) or offset
+    count = _size(page.get("count")) or offset + len(items)
+    return {"kind": "search", "q": q, "count": count, "offset": offset, "truncated": count > offset + len(items),
+            "items": items}
+
+
 def share_listing(snap, cid="", offset=0):
     """A webapi.115.com/share/snap page -> the listing the download page shows."""
     data = snap.get("data") or {}
@@ -170,6 +192,19 @@ def folder_id(value, share=False):
     if (share and value == "") or _SHARE_ID.fullmatch(value):
         return value
     raise ValueError("目录 ID 无效")
+
+
+MAX_QUERY = 100
+
+
+def search_query(value):
+    """A search keyword as typed, trimmed; names are matched against it."""
+    text = value.strip() if isinstance(value, str) else ""
+    if not text:
+        raise ValueError("请输入要搜索的名字")
+    if len(text) > MAX_QUERY:
+        raise ValueError(f"搜索词最多 {MAX_QUERY} 个字")
+    return text
 
 
 def offset(value):

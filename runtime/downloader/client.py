@@ -116,6 +116,14 @@ DOWNLOAD = _page_function("""
   const payload = {list: args.items, count: args.items.length, ref_url: location.href};
   browserInterface.CreateDownloadTask(encodeURIComponent(JSON.stringify(payload)));
   return {state: true};""")
+# The drive's own search box: webapi.115.com/files/search matches names across the drive (cid 0) or in a folder.
+SEARCH_DRIVE = _page_function("""
+  if (!uid) return {login: false};
+  const query = new URLSearchParams({aid: "1", cid: args.cid || "0", search_value: args.q, offset: String(args.offset || 0),
+                                     limit: String(args.limit), show_dir: "1", format: "json"});
+  const page = await getJSON("https://webapi.115.com/files/search?" + query);
+  return page.not_json ? {login: false} : page;""")
+SEARCH_LIMIT = 100
 SHARE_LIST = _page_function("""
   const query = new URLSearchParams({share_code: args.share_code, receive_code: args.receive_code,
                                      cid: args.cid || "", offset: String(args.offset || 0), limit: "1150"});
@@ -316,6 +324,13 @@ class Cloud115:
 
     def browse_drive(self, cid, offset=0, order=None):
         return self._listing(self._call(BROWSE_DRIVE, {"cid": str(cid or "0"), "offset": offset, "order": order}), order)
+
+    def search_drive(self, q, offset=0, cid="0"):
+        """Files and folders whose names match q, SEARCH_LIMIT at a time, each with the folder it sits in."""
+        page = self._call(SEARCH_DRIVE, {"q": q, "offset": offset, "cid": str(cid or "0"), "limit": SEARCH_LIMIT})
+        if not page.get("state"):
+            raise RuntimeError(_message(page, "搜索网盘失败"))
+        return links.search_listing(page, q, offset)
 
     def open_path(self, parts, order=None):
         """A drive path -> the listing of that folder, or of a file's folder with the file in focus."""

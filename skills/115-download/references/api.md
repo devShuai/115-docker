@@ -15,7 +15,7 @@ HTTP Basic；用户名/密码与远程桌面相同，所有资源均需认证
 
 1. GET /api/status 确认 browser=true、logged_in=true；false/409 提示用户完成桌面登录，null 稍后再查。
 
-2. inspect/browse 查看内容；根据用户选择把 name 映射为 n，并复制 pc/sc/is_dir，不要编造标识。 分享使用 browse --share URL --code CODE，分享根需 --cid ''。
+2. inspect/browse 查看内容，或用 search 按名字找；根据用户选择把 name 映射为 n，并复制 pc/sc/is_dir，不要编造标识。 分享使用 browse --share URL --code CODE，分享根需 --cid ''。
 
 3. add 提交云下载，检查 failed；to_nas=true 会自动转到 NAS，否则完成后通过 content 选择下载。
 
@@ -280,9 +280,58 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json browse --cid 0 --
 
 - share：分享列表附带 {url,receive_code}，供后续下载调用
 
+## GET /api/search — 按名字搜索网盘文件和文件夹
+
+用 115 网盘自己的搜索按名字匹配，每页最多 100 项。items 与目录响应相同：下载用 {n: name, pc, is_dir}，删除用 ids=[id]、pid=parent；文件夹可以用 cid 浏览。parent_name 在 115 没给时为空字符串。
+
+CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json search example --offset 0`
+
+参数：
+
+- q (query, 必填)：关键词，按名字匹配；{"type": "string", "minLength": 1, "maxLength": 100, "description": "首尾空白会去掉"}
+
+- offset (query, 可选)：翻页位置，下一页 = offset + items.length；{"type": "integer", "minimum": 0, "maximum": 10000000, "default": 0}
+
+- cid (query, 可选)：只搜这个目录，默认 0（整个网盘）；{"type": "string", "pattern": "^[0-9]{1,32}$", "default": "0"}
+
+请求：`GET /api/search?q=example&offset=0`
+
+200 返回示例（示意数据）：
+
+```json
+{
+  "kind": "search",
+  "q": "example",
+  "count": 1,
+  "offset": 0,
+  "truncated": false,
+  "items": [
+    {
+      "id": "42",
+      "name": "example.mkv",
+      "pc": "abc123",
+      "is_dir": false,
+      "size": 1024,
+      "time": 1760000000,
+      "cid": "",
+      "parent": "7",
+      "parent_name": "电影"
+    }
+  ]
+}
+```
+
+- kind / q：固定为 search / 实际搜索的关键词（去掉首尾空白）
+
+- count / offset / truncated：匹配总数、本页起始位置、是否还有下一页；下一页 offset = 当前 offset + items.length
+
+- items[]：id、name、pc、is_dir、size（字节；文件夹为 0）、time（Unix 秒）、cid（仅文件夹有值）
+
+- items[].parent / parent_name：所在目录 ID（删除时作为 pid）/ 所在目录名，115 没给时为空字符串
+
 ## GET /api/offline — 云下载任务列表
 
-默认 recent 按添加时间从新到旧，新提交的任务无论进行中、失败还是已完成都在其中；翻看更早的任务用 state + page。云端完成不代表 NAS 已完成。使用 hash 查询内容，ready=true 后再下载。
+默认 recent 按添加时间从新到旧，新提交的任务无论进行中、失败还是已完成都在其中；翻看更早的任务用 state + page。云端完成不代表 NAS 已完成。使用 hash 查询内容，ready=true 后再下载。q 非空时在服务端读取整个列表后筛选，count 为匹配数；读取结果保留一分钟，添加或删除任务后重新读取。
 
 CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json offline`
 
@@ -290,7 +339,9 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json offline`
 
 - state (query, 可选)：recent（默认）|running|failed|done|all；{"type": "string", "enum": ["recent", "running", "failed", "done", "all"], "default": "recent", "description": "recent 为进行中、失败、已完成各取最新一页；其余对应 115 云下载的标签页，all 为不筛选"}
 
-- page (query, 可选)：页码，用于 running/failed/done/all；{"type": "integer", "default": 1, "description": "服务端将页码限制在 1–100；省略 state 且 page>1 时按 all 翻页"}
+- page (query, 可选)：页码，用于 running/failed/done/all 和搜索；{"type": "integer", "default": 1, "description": "服务端将页码限制在 1–100；省略 state 且 page>1 时按 all 翻页"}
+
+- q (query, 可选)：按名字搜索任务（不区分大小写），每页 30 个；{"type": "string", "maxLength": 100, "description": "非空时搜索 state 对应列表里的全部任务（省略或 recent 时搜索全部任务）：名字包含 q（不区分大小写）或 info_hash 等于 q 的任务，按添加时间从新到旧，每页 30 个"}
 
 请求：`GET /api/offline?state=recent`
 
@@ -322,9 +373,11 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json offline`
 
 - tasks[].added / folder / ready / auto：上游时间 / 是否文件夹 / 可否下载 / 自动下载中文状态（可省略）
 
-- count：所选列表的上游任务总数，用于 page 翻页；recent 为三类之和
+- count：所选列表的上游任务总数，用于 page 翻页；recent 为三类之和；搜索时为匹配的任务数
 
 - counts：仅 recent：{running, failed, done} 各类任务总数
+
+- q：仅搜索时：实际搜索的关键词
 
 ## POST /api/offline — 把链接加入 115 云下载
 

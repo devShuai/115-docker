@@ -3,24 +3,24 @@
   "name": "115-download",
   "files": {
     "SKILL.md": {
-      "sha256": "41f2aea1a2a4f1ce5d6d6380480a0e1da167963ceaa06648dd05091679dee46a",
-      "size": 4773
+      "sha256": "8845f198121f2ae70f88f0d0044272b5322a92429c62e9cafe28898ae5355802",
+      "size": 5534
     },
     "agents/openai.yaml": {
       "sha256": "0d13e64cf62eba726f51e93a80cbc14887da2ec6eb4eb8930bc83959de3e2b08",
       "size": 250
     },
     "scripts/115dl.py": {
-      "sha256": "13b9edb7033598fc5b43de48823e5fe5c59bb17d05d80105226b8ab288c3ba99",
-      "size": 17521
+      "sha256": "b820eb3b4082cccb302de7277a055ca82dc83fd4008654d96a442d47cb75a1f1",
+      "size": 18747
     },
     "references/api.md": {
-      "sha256": "6a3b1744e6e2f3808bf678b5da6764dc149cdd42d0439e325048885f783fd9c1",
-      "size": 24201
+      "sha256": "8468f8c4143d99be2b93dbf35c8fbcc601d5dff08d2eb009795be9e08942efda",
+      "size": 26564
     },
     "references/openapi.json": {
-      "sha256": "7f47823946dc814693f192bd32b399c2133e1762653f612f8c6f3ada5985ccb6",
-      "size": 179754
+      "sha256": "03d289dde2a417404638cd2136f9ffd9b2a1676c1bc6ceddc23c9cb418a81051",
+      "size": 192261
     }
   }
 }

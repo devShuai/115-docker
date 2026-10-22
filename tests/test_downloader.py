@@ -92,6 +92,32 @@ class LinkTests(unittest.TestCase):
                                              "time": 1700000000, "cid": ""}])
         self.assertEqual((listing["kind"], listing["cid"], listing["title"], listing["truncated"]), ("share", "4", "分享", False))
 
+    def test_search_results_say_where_each_item_is(self):
+        page = {"state": True, "count": 3, "offset": 0,
+                "data": [{"n": "合集", "cid": "8", "pid": "7", "pc": "pcd", "tp": "1700000000", "dp": "电影"},
+                         {"n": "a.mkv", "cid": "7", "fid": "9", "pc": "pcf", "s": "1024", "te": "1700000100", "dp": "电影"},
+                         {"n": "b.mkv", "cid": 0, "fid": "10", "pc": "pcg", "s": 5}]}
+        listing = links.search_listing(page, "a")
+        self.assertEqual(listing["items"], [
+            {"id": "8", "name": "合集", "pc": "pcd", "is_dir": True, "size": 0, "time": 1700000000, "cid": "8",
+             "parent": "7", "parent_name": "电影"},
+            {"id": "9", "name": "a.mkv", "pc": "pcf", "is_dir": False, "size": 1024, "time": 1700000100, "cid": "",
+             "parent": "7", "parent_name": "电影"},
+            {"id": "10", "name": "b.mkv", "pc": "pcg", "is_dir": False, "size": 5, "time": 0, "cid": "",
+             "parent": "0", "parent_name": ""}])
+        self.assertEqual((listing["kind"], listing["q"], listing["count"], listing["offset"], listing["truncated"]),
+                         ("search", "a", 3, 0, False))
+        # The same items download and delete as listed (n = name, pc, is_dir; ids = [id], pid = parent).
+        picked = links.picked_items([{"n": item["name"], "pc": item["pc"], "is_dir": item["is_dir"]} for item in listing["items"]])
+        self.assertEqual(picked[1], {"n": "a.mkv", "pc": "pcf", "is_dir": False})
+        self.assertEqual(links.file_ids([item["id"] for item in listing["items"]]), ["8", "9", "10"])
+        self.assertTrue(links.search_listing({"count": 250, "data": page["data"]}, "a", 100)["truncated"])
+        self.assertEqual(links.search_listing({"count": 250, "data": page["data"]}, "a", 100)["offset"], 100)
+        self.assertEqual(links.search_query("  电影 "), "电影")
+        for bad in ("", "   ", None, 5, "x" * 101):
+            with self.assertRaises(ValueError, msg=bad):
+                links.search_query(bad)
+
     def test_picked_items_are_checked_before_reaching_the_browser(self):
         self.assertEqual(links.picked_items([{"n": "a.mkv", "pc": "abc1", "is_dir": False, "extra": 1}]),
                          [{"n": "a.mkv", "pc": "abc1", "is_dir": False}])
@@ -251,6 +277,21 @@ class ClientTests(unittest.TestCase):
             cloud.delete_offline(["a" * 40])
         self.assertIn("rb/delete", client.DELETE_FILES)
         self.assertIn('lixian("task_del"', client.DELETE_OFFLINE)
+
+    def test_search_runs_the_drive_search_in_the_page(self):
+        browser = FakeBrowser([DRIVE_TAB], [{"state": True, "count": 1, "data": [
+            {"n": "a.mkv", "cid": "7", "fid": "9", "pc": "pcf", "s": 1}]}, {"state": False, "error": "搜索太频繁"},
+            {"login": False}])
+        cloud = browser.cloud()
+        listing = cloud.search_drive("a", 100, "7")
+        self.assertIs(browser.log[-1][1], client.SEARCH_DRIVE)
+        self.assertEqual(browser.log[-1][2], {"q": "a", "offset": 100, "cid": "7", "limit": client.SEARCH_LIMIT})
+        self.assertEqual((listing["kind"], listing["offset"], listing["items"][0]["parent"]), ("search", 100, "7"))
+        with self.assertRaisesRegex(RuntimeError, "搜索太频繁"):
+            cloud.search_drive("a")
+        with self.assertRaises(client.NotLoggedIn):
+            cloud.search_drive("a")
+        self.assertIn("webapi.115.com/files/search", client.SEARCH_DRIVE)
 
     def test_status_has_no_side_effects(self):
         self.assertEqual(FakeBrowser(up=False).cloud().status(), {"browser": False, "logged_in": False})
@@ -496,6 +537,7 @@ class FakeWatcher:
 class ServerCloud:
     def __init__(self):
         self.calls, self.error, self.live = [], None, None
+        self.paged = {}  # stat -> pages of tasks, for reading a whole list
 
     def _maybe_fail(self):
         if self.error:
@@ -519,7 +561,15 @@ class ServerCloud:
 
     def offline_lists(self, lists):
         self.calls.append(("lists", lists))
-        return [{"tasks": self.OFFLINE[stat] if page == 1 else [], "count": 10 + stat} for stat, page in lists]
+        return [{"tasks": self.paged[stat][page - 1] if page <= len(self.paged[stat]) else [],
+                 "count": sum(map(len, self.paged[stat])), "page_count": len(self.paged[stat])} if stat in self.paged
+                else {"tasks": self.OFFLINE[stat] if page == 1 else [], "count": 10 + stat} for stat, page in lists]
+
+    def search_drive(self, q, offset=0, cid="0"):
+        self._maybe_fail()
+        self.calls.append(("search", q, offset, cid))
+        return links.search_listing({"count": 1, "data": [{"n": "a.mkv", "cid": "7", "fid": "9", "pc": "pcf", "s": 1}]},
+                                    q, offset)
 
     def offline_tasks(self, page=1, stat=0):
         return self.offline_lists([(stat, page)])[0]
@@ -590,6 +640,45 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.post("/api/offline/delete", {"hashes": []})[0], 400)
         self.cloud.error = RuntimeError("115 失败")
         self.assertEqual(self.post("/api/delete", {"ids": ["42"]})[0], 502)
+
+    def test_drive_search(self):
+        status, _, body = self.request("GET", "/api/search?q=%20a%20&offset=100&cid=7")
+        self.assertEqual((status, json.loads(body)["kind"], json.loads(body)["items"][0]["parent"]), (200, "search", "7"))
+        self.assertEqual(self.cloud.calls[-1], ("search", "a", 100, "7"))
+        self.request("GET", "/api/search?q=a")
+        self.assertEqual(self.cloud.calls[-1], ("search", "a", 0, "0"))
+        for query in ("", "q=", "q=%20", "q=a&offset=x", "q=a&cid=..%2F1", "q=" + "x" * 101):
+            self.assertEqual(self.request("GET", "/api/search?" + query)[0], 400, query)
+
+    def test_searching_cloud_tasks_reads_a_list_at_most_once_a_minute(self):
+        now = [100.0]
+        self.app.clock = lambda: now[0]
+        tasks = [{"info_hash": f"{i:040x}", "name": f"Movie {i:03d}" if i % 3 else f"其他 {i}", "status": 2,
+                  "add_time": 1000 + i} for i in range(1, 71)]
+        self.cloud.paged = {0: [tasks[start:start + 30] for start in range(0, 70, 30)]}
+        lists = lambda: [call[1] for call in self.cloud.calls if call[0] == "lists"]  # noqa: E731
+        status, _, body = self.request("GET", "/api/offline?q=movie")
+        data = json.loads(body)
+        self.assertEqual((status, data["count"], data["q"], len(data["tasks"])), (200, 47, "movie", 30))
+        self.assertEqual(data["tasks"][0]["name"], "Movie 070")                     # newest first
+        self.assertEqual(lists(), [[(0, 1)], [(0, 2), (0, 3)]])                    # the rest in one round trip
+        data = json.loads(self.request("GET", "/api/offline?q=MOVIE&page=2")[2])
+        self.assertEqual((data["count"], len(data["tasks"])), (47, 17))
+        data = json.loads(self.request("GET", f"/api/offline?state=all&q={3:040x}")[2])
+        self.assertEqual([task["name"] for task in data["tasks"]], ["其他 3"])       # an info_hash matches too
+        self.assertEqual(len(lists()), 2, "paging and typing reuse the read")
+        self.post("/api/offline/delete", {"hashes": [tasks[0]["info_hash"]]})
+        self.request("GET", "/api/offline?q=movie")
+        self.assertEqual(len(lists()), 4, "deleting starts over")
+        now[0] += 61
+        self.request("GET", "/api/offline?q=movie")
+        self.assertEqual(len(lists()), 6, "a minute later the list is read again")
+        self.cloud.paged[client.DONE] = [[tasks[0], tasks[2]]]
+        data = json.loads(self.request("GET", "/api/offline?state=done&q=movie")[2])
+        self.assertEqual([task["name"] for task in data["tasks"]], ["Movie 001"])
+        for query in ("q=" + "x" * 101, "state=bad&q=x"):
+            self.assertEqual(self.request("GET", "/api/offline?" + query)[0], 400, query)
+        self.assertIn("counts", json.loads(self.request("GET", "/api/offline?q=%20")[2]), "a blank q lists as before")
 
     def test_nas_files_are_deleted_only_inside_the_download_folder(self):
         root = Path(self.temporary.name) / "Downloads"
@@ -667,7 +756,7 @@ class ServerTests(unittest.TestCase):
     def test_complete_reference_and_openapi_cover_every_operation(self):
         spec = json.loads(self.request("GET", "/openapi.json")[2])
         docs = json.loads(self.request("GET", "/api/endpoints")[2])
-        self.assertEqual(len(docs["endpoints"]), 15)
+        self.assertEqual(len(docs["endpoints"]), 16)
         self.assertEqual(spec["security"], [{"desktopBasic": []}])
         for item in docs["endpoints"]:
             operation = spec["paths"][item["path"]][item["method"].lower()]
@@ -1091,6 +1180,16 @@ class CliTests(unittest.TestCase):
         self.assertIn(f"进行中 {10 + client.RUNNING} · 失败 {10 + client.FAILED} · 已完成 {10 + client.DONE}", out)
         self.run_cli("offline", "--state", "done", "--page", "2")
         self.assertEqual(self.cloud.calls[-1], ("lists", [(client.DONE, 2)]))
+
+    def test_search_and_task_search(self):
+        code, out = self.run_cli("--json", "search", "a", "--offset", "100", "--cid", "7")
+        self.assertEqual((code, json.loads(out)["kind"]), (0, "search"))
+        self.assertEqual(self.cloud.calls[-1], ("search", "a", 100, "7"))
+        code, out = self.run_cli("search", "a")
+        self.assertIn("搜索「a」共 1 项", out)
+        self.assertIn("a.mkv", out)
+        code, out = self.run_cli("--json", "offline", "--q", "电影")
+        self.assertEqual((code, json.loads(out)["q"], json.loads(out)["count"]), (0, "电影", 0))
 
     def test_wrong_password_reports_an_auth_error(self):
         err = io.StringIO()
