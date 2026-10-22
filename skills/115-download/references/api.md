@@ -528,7 +528,7 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json share 'https://11
 
 ## GET /api/transfers — NAS 实时传输进度
 
-progress 为 0–1，完成恒为 1；verifying 表示文件下载后校验中，不能按 progress=1 判定最终完成。live=false 表示 115 浏览器的传输列表页未打开，数据来自下载历史，进度和速度按磁盘上已写入的数据估算。最多 50 项。
+progress 为 0–1，完成恒为 1；verifying 表示文件下载后校验中，不能按 progress=1 判定最终完成。live=false 表示 115 浏览器的传输列表页未打开，数据来自下载历史，进度和速度按磁盘上已写入的数据估算。最多 50 项。下好的文件用 items[].local_id 调 local-delete 删除。
 
 CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json transfers`
 
@@ -559,7 +559,9 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json transfers`
       "remain": 0,
       "folder": false,
       "error": "",
-      "ended": "2026-10-13 12:00:00"
+      "ended": "2026-10-13 12:00:00",
+      "local_id": 42,
+      "exists": true
     }
   ]
 }
@@ -574,6 +576,8 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json transfers`
 - items[].received / total / speed：可读大小/速度字符串（如 1.2 GB、5 MB/s），未知为空字符串
 
 - items[].remain / folder / error / ended：剩余秒 / 文件夹布尔 / 错误信息 / 完成时间字符串
+
+- items[].local_id / exists：下载记录 ID（同 local 的 id，用于 local-delete），没有记录时为 null / 文件还在不在 NAS 上，仅 state=done 时为布尔值，其他为 null
 
 ## GET /api/local — NAS 本地下载记录
 

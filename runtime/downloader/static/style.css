@@ -15,6 +15,8 @@
   --ok: #128a46;
   --warn: #b86e00;
   --bad: #d23a2f;
+  --bad-2: #b8302a;
+  --bad-bg: #fdecea;
   --folder: #f0b03a;
   --track: #e5e8ed;
 }
@@ -36,6 +38,8 @@
     --ok: #41c07a;
     --warn: #e3a440;
     --bad: #f0675d;
+    --bad-2: #f3837b;
+    --bad-bg: #3a1f1d;
     --folder: #e2ad4b;
     --track: #2a3039;
   }
@@ -96,6 +100,10 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
 .btn.primary:hover { border-color: var(--accent-2); background: var(--accent-2); }
 .btn.ghost { height: 28px; padding: 0 8px; border-color: transparent; background: none; color: var(--accent); }
 .btn.ghost:hover { background: var(--accent-bg); }
+.btn.delete { color: var(--bad); }
+.btn.delete:hover { background: var(--bad-bg); }
+.btn.danger { border-color: var(--bad); background: var(--bad); color: #fff; }
+.btn.danger:hover { border-color: var(--bad-2); background: var(--bad-2); }
 .btn:disabled { opacity: .45; cursor: default; pointer-events: none; }
 .icon-btn { width: 32px; padding: 0; border-color: transparent; color: var(--text-2); }
 .icon-btn svg { width: 16px; height: 16px; }
@@ -237,6 +245,32 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
 .is-done .task-pct { color: var(--ok); }
 .is-failed .task-pct, .is-failed .task-meta { color: var(--bad); }
 .is-canceled { opacity: .65; }
+
+/* Ticking rows in 云下载, 云下载完成 and 最近下载, and the bar that deletes them. */
+.bulk {
+  display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 4px 12px 4px 16px;
+  border-bottom: 1px solid var(--line); background: var(--head); font-size: 13px; color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.bulk .btn { height: 28px; margin-left: auto; padding: 0 12px; font-size: 13px; }
+.task .pick { flex: none; }
+.task.selectable .bar, .task.selectable .task-meta { margin-left: 53px; }
+.task.on { background: var(--accent-bg); }
+.task.gone .task-name { color: var(--text-3); text-decoration: line-through; }
+.task.gone .task-pct { color: var(--text-3); }
+
+/* Confirmation before every delete */
+.confirm-dialog {
+  width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); color: var(--text); box-shadow: 0 16px 48px rgba(0, 0, 0, .28);
+}
+.confirm-dialog::backdrop { background: rgba(0, 0, 0, .4); }
+.confirm-box { display: flex; flex-direction: column; gap: 10px; padding: 18px 18px 14px; }
+.confirm-title { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.confirm-body { margin: 0; font-size: 13px; color: var(--text-2); }
+.confirm-option { align-items: flex-start; font-size: 13px; }
+.confirm-option input { margin-top: 3px; }
+.confirm-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 
 /* Command-line and endpoints reference (top-right button + modal) */
 .cli-btn {
@@ -380,8 +414,10 @@ main { display: flex; flex-direction: column; gap: 16px; max-width: 1040px; marg
   .files .size, .files .time { display: none; }
   .sub { display: block; }
   .picker-foot { flex-wrap: wrap; }
-  .actions { width: 100%; }
-  .actions .btn { flex: 1; }
+  /* 删除, 下载整个文件夹 and 下载到 NAS can outgrow a phone's width: the last one wraps to its own row. */
+  .actions { width: 100%; flex-wrap: wrap; }
+  .actions .btn { flex: 1 1 auto; }
   .task { padding: 10px 12px; }
-  .bar, .task-meta { margin-left: 0; }
+  .bar, .task-meta, .task.selectable .bar, .task.selectable .task-meta { margin-left: 0; }
+  .bulk { padding-left: 12px; }
 }

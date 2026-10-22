@@ -162,7 +162,8 @@ def show_transfers(data, _):
     for item in data.get("items") or []:
         pct = f"{item.get('progress', 0) * 100:.0f}%"
         detail = item.get("speed") or ((item.get("received", "") + "/" + item.get("total", "")).strip("/"))
-        print(f"  {item.get('state', ''):<12}{pct:>5}  {detail:<20} {item.get('name', '')}")
+        gone = "（已不在 NAS 上）" if item.get("exists") is False else ""
+        print(f"  {item.get('state', ''):<12}{pct:>5}  {detail:<20} {item.get('name', '')}{gone}")
 
 
 def show_local(data, _):

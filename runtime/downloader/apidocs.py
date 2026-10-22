@@ -138,7 +138,8 @@ EXAMPLES = {
     "transfers": ({}, {"live": True, "active": 0, "speed": "", "progress": None, "items": [{
                   "id": "42", "name": "example.mkv", "state": "done", "progress": 1, "verify": None,
                   "received": "1 KB", "total": "1 KB", "speed": "", "remain": 0, "folder": False,
-                  "error": "", "ended": "2026-10-13 12:00:00"}]}, "115dl --json transfers"),
+                  "error": "", "ended": "2026-10-13 12:00:00", "local_id": 42, "exists": True}]},
+                  "115dl --json transfers"),
     "local": ({"limit": 30}, {"downloads": [{"id": 42, "name": "example.mkv", "path": "/opt/Downloads/example.mkv",
                "received": 1024, "total": 1024, "state": "已完成", "key": "done", "started": 1760000000,
                "finished": 1760000001, "exists": True}]}, "115dl --json local --limit 30"),
@@ -161,7 +162,8 @@ NOTES = {
     "content": "hash 来自 offline；任务需完成并已搬入网盘。接口搜索最近任务，找不到或未就绪返回 400。",
     "download": "提供 path 或 items；两者都有时 items 优先。items 不可空，最多 1150 项；响应表示已提交，完成情况查询 transfers/local。",
     "share": "省略 items 会下载分享顶层全部内容（文件夹递归）；传 items 时不可空，最多 1150 项。响应表示已提交。",
-    "transfers": "progress 为 0–1，完成恒为 1；verifying 表示文件下载后校验中，不能按 progress=1 判定最终完成。live=false 表示 115 浏览器的传输列表页未打开，数据来自下载历史，进度和速度按磁盘上已写入的数据估算。最多 50 项。",
+    "transfers": "progress 为 0–1，完成恒为 1；verifying 表示文件下载后校验中，不能按 progress=1 判定最终完成。live=false 表示 115 浏览器的传输列表页未打开，数据来自下载历史，进度和速度按磁盘上已写入的数据估算。最多 50 项。"
+                 "下好的文件用 items[].local_id 调 local-delete 删除。",
     "local": "浏览器下载历史，默认最近 30 条；received/total 为字节。以 key=done 为完成依据；并非 NAS 全盘文件列表。"
              "exists=false 表示文件已不在 NAS 上（被删或移走）。",
     "delete": "删除后进 115 回收站，可在 115 里恢复；文件夹连同里面的内容一起删。ids 不可空，最多 1150 项。",
@@ -192,7 +194,9 @@ FIELDS = {
                   "items[].id / name / state": "任务 ID / 文件名 / downloading, verifying, waiting, paused, done, canceled, failed",
                   "items[].progress / verify": "下载比例 0–1 / 校验比例 0–1 或 null；最终完成依据 state=done",
                   "items[].received / total / speed": "可读大小/速度字符串（如 1.2 GB、5 MB/s），未知为空字符串",
-                  "items[].remain / folder / error / ended": "剩余秒 / 文件夹布尔 / 错误信息 / 完成时间字符串"},
+                  "items[].remain / folder / error / ended": "剩余秒 / 文件夹布尔 / 错误信息 / 完成时间字符串",
+                  "items[].local_id / exists": "下载记录 ID（同 local 的 id，用于 local-delete），没有记录时为 null / "
+                                               "文件还在不在 NAS 上，仅 state=done 时为布尔值，其他为 null"},
     "local": {"downloads[]": "id、name、path（容器内路径）、received/total（字节）、state（中文）、key（downloading/done/canceled/failed）、started/finished（Unix 秒或 null）、exists（文件还在不在）"},
     "delete": {"count": "已删除（进回收站）的项数"},
     "remove": {"count / files": "删除的任务数 / 是否连同网盘文件一起删", "forgotten": "其中原本在等着下到 NAS 的任务数"},
@@ -269,7 +273,7 @@ TRANSFER = object_schema({"id": STRING, "name": STRING, "state": {"type": "strin
     "downloading", "verifying", "waiting", "paused", "done", "canceled", "failed"]},
     "progress": FRACTION, "verify": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
     "speed": STRING, "remain": INT, "received": STRING, "total": STRING, "folder": BOOL,
-    "error": STRING, "ended": STRING})
+    "error": STRING, "ended": STRING, "local_id": {"type": ["integer", "null"]}, "exists": {"type": ["boolean", "null"]}})
 RESPONSE_SCHEMAS = {
     "status": object_schema({"browser": BOOL, "logged_in": {"type": ["boolean", "null"]}, "user_id": STRING,
                              "version": STRING}),

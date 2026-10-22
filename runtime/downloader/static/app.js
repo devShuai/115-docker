@@ -81,6 +81,23 @@ function say(text, ok) {
   if (ok) messageTimer = setTimeout(() => { message.hidden = true; }, 8000);
 }
 
+// Every delete asks first. Resolves to null when cancelled, else {checked} for the optional box.
+function ask({title, body, option = "", label = "删除"}) {
+  const dialog = $("confirm");
+  if (!dialog.showModal) return Promise.resolve(window.confirm(title + "\n" + body) ? {checked: false} : null);
+  $("confirm-title").textContent = title;
+  $("confirm-body").textContent = body;
+  $("confirm-option").hidden = !option;
+  $("confirm-check").checked = false;
+  $("confirm-check-text").textContent = option;
+  $("confirm-ok").textContent = label;
+  dialog.returnValue = "";
+  dialog.showModal();
+  $("confirm-cancel").focus();
+  return new Promise((resolve) => dialog.addEventListener("close", () =>
+    resolve(dialog.returnValue === "ok" ? {checked: $("confirm-check").checked} : null), {once: true}));
+}
+
 // Rows are updated in place, so progress bars move smoothly between polls.
 function sync(list, items, key, build, empty) {
   if (!items.length) {
@@ -107,22 +124,41 @@ function sync(list, items, key, build, empty) {
 
 function taskParts(node) {
   if (!node.firstChild) {
+    const pick = h("input", {class: "pick", type: "checkbox", hidden: true});
+    pick.addEventListener("change", () => node.pick && node.pick(pick.checked));
     const action = h("button", {class: "btn", type: "button", hidden: true});
     action.addEventListener("click", () => node.action && node.action());
     node.append(
-      h("div", {class: "task-line"}, h("span", {class: "icon"}), h("span", {class: "task-name"}),
+      h("div", {class: "task-line"}, pick, h("span", {class: "icon"}), h("span", {class: "task-name"}),
         h("span", {class: "task-pct"}), action),
       h("div", {class: "bar"}, h("span")),
       h("div", {class: "task-meta"}));
+    // A tickable row ticks from anywhere on it, as the picker's rows do.
+    node.addEventListener("click", (event) => {
+      if (!node.pick || event.target.closest("button, input, a")) return;
+      pick.checked = !pick.checked;
+      node.pick(pick.checked);
+    });
   }
   const [line, bar, meta] = node.children;
-  const [slot, name, right, action] = line.children;
-  return {slot, name, right, action, bar, meta};
+  const [pick, slot, name, right, action] = line.children;
+  return {pick, slot, name, right, action, bar, meta};
 }
 
-function paint(node, {state, live, name, folder, right, bar, meta, action}) {
+// select: {on, toggle} makes the row tickable, {off: reason} shows why it cannot be;
+// gone: a finished download whose file left the NAS.
+function paint(node, {state, live, name, folder, right, bar, meta, action, select = null, gone = false}) {
   const parts = taskParts(node);
-  node.className = "task is-" + state + (live ? " live" : "");
+  node.className = "task is-" + state + (live ? " live" : "") + (select ? " selectable" : "") +
+    (select && select.on ? " on" : "") + (gone ? " gone" : "");
+  parts.pick.hidden = !select;
+  if (select) {
+    parts.pick.checked = !!select.on;
+    parts.pick.disabled = !!select.off;
+    parts.pick.title = select.off || "";
+    parts.pick.setAttribute("aria-label", "选择 " + name);
+  }
+  node.pick = select && !select.off ? select.toggle : null;
   setIcon(parts.slot, name, folder);
   parts.name.textContent = name;
   parts.name.title = name;
@@ -157,7 +193,7 @@ async function refreshStatus() {
 
 const RUNNING = new Set(["downloading", "verifying", "waiting"]);
 let transfers = {items: [], active: 0, live: true, progress: null, speed: ""};
-let boostUntil = 0;
+let transfersLoaded = false, boostUntil = 0;
 
 function transferRow(node, item) {
   const amount = item.total ? (item.received ? item.received + " / " : "") + item.total : item.received;
@@ -176,8 +212,20 @@ function transferRow(node, item) {
     view.bar = null;
     view.right = {done: "已完成", failed: "失败", canceled: "已取消"}[item.state] || item.state;
     view.meta = item.state === "failed" ? [item.error || "下载失败"] : [item.total || item.received, when(item.ended)];
+    if (item.state === "done" && item.exists === false) {
+      view.gone = true;
+      view.meta.unshift("已不在 NAS 上");
+    }
+    // Rows that cannot be deleted keep a disabled box, so the column stays aligned and says why.
+    view.select = onNas(item) ? selectView(node, String(item.local_id))
+      : {off: view.gone ? "文件已不在 NAS 上" : item.state === "done" ? "找不到它的下载记录" : "没有下载完成，NAS 上没有文件"};
   }
   paint(node, view);
+}
+
+// A finished download whose file is still on the NAS can be deleted from it by its history id.
+function onNas(item) {
+  return item.state === "done" && item.exists === true && item.local_id !== null && item.local_id !== undefined;
 }
 
 async function refreshTransfers() {
@@ -192,11 +240,18 @@ async function refreshTransfers() {
     document.title = "进度更新中 · 115 下载";
     throw error;
   }
+  transfersLoaded = true;
+  renderTransfers();
+}
+
+function renderTransfers() {
   // Finished rows leave 下载中 and move to 最近下载.
   const running = transfers.items.filter((item) => RUNNING.has(item.state) || item.state === "paused");
   const finished = transfers.items.filter((item) => !RUNNING.has(item.state) && item.state !== "paused");
   sync($("nas"), running, (item) => item.id, transferRow, "没有正在下载的任务");
   sync($("recent"), finished, (item) => item.id, transferRow, "还没有下载到 NAS 的任务");
+  pickable.recent = finished.filter(onNas).map((item) => String(item.local_id));
+  renderBulk();
   $("nas-note").hidden = tab !== "nas" || transfers.live || !running.length;
   $("count-nas").textContent = transfers.active || "";
   const busy = transfers.active > 0;
@@ -220,9 +275,12 @@ const AUTO = {"等待云下载完成": "完成后自动下载到 NAS", "已开�
 // Older failures stay in 115's own 下载失败 list instead of crowding 云下载.
 const FAILED_SECONDS = 7 * 86400;
 const waiting = new Map();
-let cloud = [];
+let cloud = [], cloudCounts = {}, cloudLoaded = false, oldFailures = false;
+// Older pages of 115's failed and finished lists, loaded with 加载更多 below the newest page.
+const older = {failed: {page: 1, tasks: [], end: false}, done: {page: 1, tasks: [], end: false}};
 
-function cloudRow(node, task) {
+// selectable: a row of the 云下载 tabs, which can be ticked for deleting.
+function cloudRow(node, task, selectable) {
   const running = task.state === "downloading";
   paint(node, {
     state: task.state, live: running, name: task.name, folder: task.folder,
@@ -233,19 +291,18 @@ function cloudRow(node, task) {
     // Tasks marked for automatic download go to the NAS whole; picking from them too would download twice.
     action: task.ready && task.hash && task.auto !== "等待云下载完成"
       ? {label: "选择内容", run: () => openOffline(task.hash)} : null,
+    select: selectable && task.hash ? selectView(node, task.hash) : null,
   });
 }
 
 async function refreshCloud() {
   try {
-    // The newest tasks of each kind (running, failed, finished), newest first.
-    cloud = (await api("api/offline")).tasks;
-    const key = (task) => task.hash || task.name;
-    const since = Date.now() / 1000 - FAILED_SECONDS;
-    const running = cloud.filter((task) => task.state === "downloading" || task.state === "waiting");
-    const failed = cloud.filter((task) => task.state === "failed" && Number(task.added) > since);
-    sync($("cloud"), running.concat(failed), key, cloudRow, "没有进行中的云下载");
-    sync($("cloud-done"), cloud.filter((task) => task.state === "done"), key, cloudRow, "最近没有完成的云下载");
+    // The newest tasks of each kind (running, failed, finished), newest first, and how many each list holds.
+    const data = await api("api/offline");
+    cloud = data.tasks;
+    cloudCounts = data.counts || {};
+    cloudLoaded = true;
+    renderCloud();
   } catch (error) {
     if (!cloud.length) {
       sync($("cloud"), [], null, null, error.message);
@@ -254,6 +311,80 @@ async function refreshCloud() {
   }
   $("count-cloud").textContent = cloud.filter((task) => task.state === "downloading").length || "";
   updateWaiting();
+}
+
+// 云下载: running and waiting tasks, then failures (only the last week's until older ones are asked for);
+// 云下载完成: finished tasks. Pages loaded with 加载更多 follow without repeating a task.
+function cloudLists() {
+  const since = Date.now() / 1000 - FAILED_SECONDS;
+  const known = new Set(cloud.map((task) => task.hash));
+  const more = (state) => older[state].tasks.filter((task) => !known.has(task.hash));
+  return {
+    cloud: cloud.filter((task) => task.state === "downloading" || task.state === "waiting")
+      .concat(cloud.filter((task) => task.state === "failed" && (oldFailures || Number(task.added) > since)), more("failed")),
+    done: cloud.filter((task) => task.state === "done").concat(more("done")),
+  };
+}
+
+function renderCloud() {
+  const lists = cloudLists(), key = (task) => task.hash || task.name;
+  const row = (node, task) => cloudRow(node, task, true);
+  sync($("cloud"), lists.cloud, key, row, "没有进行中的云下载");
+  sync($("cloud-done"), lists.done, key, row, "最近没有完成的云下载");
+  pickable.cloud = lists.cloud.filter((task) => task.hash).map((task) => task.hash);
+  pickable["cloud-done"] = lists.done.filter((task) => task.hash).map((task) => task.hash);
+  const failed = lists.cloud.filter((task) => task.state === "failed").length;
+  const moreFailed = older.failed.end ? 0 : Math.max(0, (cloudCounts.failed || 0) - failed);
+  const moreDone = older.done.end ? 0 : Math.max(0, (cloudCounts.done || 0) - lists.done.length);
+  $("cloud-more").hidden = tab !== "cloud" || !moreFailed;
+  $("cloud-more-text").textContent = "更早的失败任务还有 " + moreFailed + " 个";
+  $("cloud-done-more").hidden = tab !== "cloud-done" || !moreDone;
+  $("cloud-done-more-text").textContent = "已列出 " + lists.done.length + " 个，共 " + (cloudCounts.done || 0) + " 个";
+  renderBulk();
+}
+
+function hiddenFailures() {
+  const since = Date.now() / 1000 - FAILED_SECONDS;
+  return cloud.some((task) => task.state === "failed" && Number(task.added) <= since);
+}
+
+// 加载更多 under 云下载: first the older failures already on the newest page, then further pages.
+function moreFailures() {
+  const reveal = !oldFailures && hiddenFailures();
+  oldFailures = true;
+  if (reveal) renderCloud();
+  else loadOlder("failed");
+}
+
+async function loadOlder(state) {
+  const list = older[state], button = $(state === "failed" ? "cloud-more-btn" : "cloud-done-more-btn");
+  button.disabled = true;
+  try {
+    const data = await api("api/offline?state=" + state + "&page=" + (list.page + 1));
+    const known = new Set(cloud.concat(list.tasks).map((task) => task.hash));
+    list.tasks = list.tasks.concat(data.tasks.filter((task) => task.hash && !known.has(task.hash)));
+    list.page += 1;
+    list.end = !data.tasks.length || list.page >= 100;
+    cloudCounts[state] = data.count;
+  } catch (error) {
+    say(error.message, false);
+  } finally {
+    button.disabled = false;
+    renderCloud();
+  }
+}
+
+// Deleted tasks leave the lists at once. Later pages shift by what was deleted, so the older pages
+// are dropped and 加载更多 starts over from the second page.
+function forgetTasks(hashes) {
+  const gone = new Set(hashes);
+  if (!gone.size) return;
+  cloud = cloud.filter((task) => !gone.has(task.hash));
+  for (const list of Object.values(older)) Object.assign(list, {page: 1, tasks: [], end: false});
+  for (const hash of gone) {
+    waiting.delete(hash);
+    picked.delete(hash);
+  }
 }
 
 function updateWaiting() {
@@ -304,6 +435,112 @@ async function addLinks(text) {
   if (data.added || existing) setInput("");
   updateWaiting();
   kickCloud();
+}
+
+/* ---------- Ticking and deleting in the queue tabs ---------- */
+
+// Rows ticked in the current tab: task hashes, or download ids in 最近下载. Switching tabs clears them.
+const picked = new Set();
+const pickable = {};  // tab -> keys of the rows that can be ticked there
+let deleting = false;
+
+function selectView(node, key) {
+  return {on: picked.has(key), toggle: (value) => {
+    if (value) picked.add(key); else picked.delete(key);
+    node.classList.toggle("on", value);
+    renderBulk();
+  }};
+}
+
+function renderBulk() {
+  const keys = new Set(pickable[tab] || []);
+  for (const key of picked) if (!keys.has(key)) picked.delete(key);
+  const count = picked.size, nas = tab === "recent";
+  $("bulk").hidden = !keys.size;
+  $("bulk-all").checked = count > 0 && count === keys.size;
+  $("bulk-all").indeterminate = count > 0 && count < keys.size;
+  $("bulk-text").textContent = count ? "已选 " + count + (nas ? " 个文件" : " 个任务") : "全选";
+  $("bulk-delete").textContent = nas ? "从 NAS 删除" : "删除任务";
+  $("bulk-delete").disabled = !count || deleting;
+}
+
+// Rows show the ticks again after a tab switch or 全选, without waiting for the next poll.
+function redraw() {
+  if (transfersLoaded) renderTransfers();
+  if (cloudLoaded) renderCloud();
+  renderBulk();
+}
+
+async function deleteTasks(hashes) {
+  if (!hashes.length) return;
+  const first = cloud.concat(older.failed.tasks, older.done.tasks).find((task) => task.hash === hashes[0]);
+  const answer = await ask({
+    title: hashes.length === 1 ? "删除云下载任务「" + (first ? first.name : hashes[0]) + "」？"
+      : "删除选中的 " + hashes.length + " 个云下载任务？",
+    body: "只删 115 的云下载记录，进行中的会停止下载；已经下到 NAS 的文件不受影响。",
+    option: "同时删除任务存到网盘的文件（进 115 回收站，可以恢复）",
+    label: "删除任务",
+  });
+  if (!answer) return;
+  const gone = [];
+  deleting = true;
+  renderBulk();
+  try {
+    for (let start = 0; start < hashes.length; start += 100) {  // The API takes 100 tasks a request.
+      const part = hashes.slice(start, start + 100);
+      await api("api/offline/delete", {hashes: part, files: answer.checked});
+      gone.push(...part);
+    }
+    say("已删除 " + gone.length + " 个云下载任务" + (answer.checked ? "，存到网盘的文件进了 115 回收站" : ""), true);
+  } catch (error) {
+    say((gone.length ? "删了 " + gone.length + " 个，其余没删成：" : "没删成：") + error.message, false);
+  } finally {
+    deleting = false;
+    forgetTasks(gone);
+    renderCloud();
+    kickCloud();
+  }
+}
+
+async function deleteNas(ids) {
+  if (!ids.length) return;
+  const first = transfers.items.find((item) => String(item.local_id) === ids[0]);
+  const answer = await ask({
+    title: ids.length === 1 ? "从 NAS 删除「" + (first ? first.name : ids[0]) + "」？" : "从 NAS 删除选中的 " + ids.length + " 个文件？",
+    body: "直接从 NAS 的下载目录删除，不能恢复；115 网盘里的文件不受影响。",
+    label: "从 NAS 删除",
+  });
+  if (!answer) return;
+  const result = {deleted: [], missing: [], failed: [], error: ""};
+  deleting = true;
+  renderBulk();
+  try {
+    for (let start = 0; start < ids.length; start += 200) {  // The API takes 200 files a request.
+      const part = await api("api/local/delete", {ids: ids.slice(start, start + 200).map(Number)});
+      for (const key of ["deleted", "missing", "failed"]) result[key].push(...(part[key] || []));
+    }
+  } catch (error) {
+    result.error = error.message;
+  }
+  deleting = false;
+  // Show them as gone right away; the next poll reads the same from the disk.
+  const gone = new Set(result.deleted.concat(result.missing).map((item) => String(item.id)));
+  for (const item of transfers.items) if (gone.has(String(item.local_id))) item.exists = false;
+  picked.clear();
+  say(nasReport(result), !result.failed.length && !result.error);
+  renderTransfers();
+  kickTransfers();
+}
+
+function nasReport({deleted, missing, failed, error}) {
+  const parts = [];
+  if (deleted.length) parts.push("已从 NAS 删除 " + deleted.length + " 个文件");
+  if (missing.length) parts.push(missing.length + " 个文件本来就不在了");
+  if (failed.length) {
+    parts.push(failed.length + " 个没删：" + failed.map((item) => (item.name || item.id) + "（" + item.error + "）").join("；"));
+  }
+  if (error) parts.push((deleted.length || missing.length || failed.length ? "其余没删成：" : "没删成：") + error);
+  return parts.join("，") || "没有删除任何文件";
 }
 
 /* ---------- Picker ---------- */
@@ -560,9 +797,9 @@ function renderSelection() {
   const chosen = picker.items.filter((item) => picker.selected.has(item.id));
   const folders = chosen.filter((item) => item.is_dir).length;
   const bytes = chosen.reduce((sum, item) => sum + (item.is_dir ? 0 : item.size || 0), 0);
-  const summary = $("selection");
+  const summary = $("selection"), removable = deletable(picker.listing, picker.items);
   if (!chosen.length) {
-    summary.textContent = picker.items.length ? "勾选要下载的文件或文件夹" : "";
+    summary.textContent = !picker.items.length ? "" : removable ? "勾选要下载或删除的文件、文件夹" : "勾选要下载的文件或文件夹";
   } else {
     summary.replaceChildren("已选 ", h("b", {text: String(chosen.length)}), " 项",
       bytes ? " · " + size(bytes) : "", folders ? "（含 " + folders + " 个文件夹）" : "");
@@ -574,6 +811,9 @@ function renderSelection() {
   $("all").disabled = !visible.length;
   $("fetch").disabled = !chosen.length || picker.busy;
   $("fetch").textContent = chosen.length ? "下载 " + chosen.length + " 项到 NAS" : "下载到 NAS";
+  $("remove").hidden = !removable;
+  $("remove").disabled = !chosen.length || picker.busy;
+  $("remove").textContent = chosen.length ? "删除 " + chosen.length + " 项" : "删除";
   const whole = wholeFolder();
   $("whole").hidden = !whole;
   $("whole").disabled = picker.busy;
@@ -609,6 +849,55 @@ function fetchSelected() {
 function fetchWhole() {
   const folder = wholeFolder();
   if (folder) fetchItems([folder], "文件夹「" + folder.n + "」");
+}
+
+// Drive listings can delete what they list. Shares belong to someone else, and a single-file download
+// result is listed by its pick code, which 115's recycle bin does not take.
+function deletable(listing, items) {
+  return !!listing && listing.kind === "drive" && items.length > 0 && items.every((item) => /^\d+$/.test(item.id));
+}
+
+async function deleteSelected() {
+  const listing = picker.listing;
+  const chosen = picker.items.filter((item) => picker.selected.has(item.id));
+  if (!deletable(listing, chosen)) return;
+  const folders = chosen.filter((item) => item.is_dir).length;
+  const answer = await ask({
+    title: chosen.length === 1 ? "删除「" + chosen[0].name + "」？" : "删除选中的 " + chosen.length + " 项？",
+    body: "移到 115 回收站，可以在 115 里恢复" + (folders ? "；文件夹连同里面的内容一起删" : "") + "。已经下到 NAS 的文件不受影响。",
+  });
+  if (!answer || picker.listing !== listing) return;
+  const ids = chosen.map((item) => item.id), gone = [];
+  const pid = /^\d+$/.test(listing.cid || "") ? listing.cid : "";
+  setBusy(true);
+  try {
+    for (let start = 0; start < ids.length; start += 1150) {  // The API takes 1150 items a request.
+      const part = ids.slice(start, start + 1150);
+      await api("api/delete", {ids: part, pid});
+      gone.push(...part);
+    }
+    say("已删除 " + gone.length + " 项，在 115 回收站里可以恢复", true);
+  } catch (error) {
+    say((gone.length ? "删了 " + gone.length + " 项，其余没删成：" : "没删成：") + error.message, false);
+  } finally {
+    if (picker.listing === listing) dropItems(gone);
+    setBusy(false);
+  }
+}
+
+// Deleted rows leave the listing; later pages start that many items earlier.
+function dropItems(ids) {
+  if (!ids.length) return;
+  const gone = new Set(ids);
+  picker.items = picker.items.filter((item) => !gone.has(item.id));
+  for (const id of gone) picker.selected.delete(id);
+  picker.listing.count = Math.max(0, (picker.listing.count || 0) - gone.size);
+  picker.loaded = Math.max(0, picker.loaded - gone.size);
+  picker.last = -1;
+  renderRows();
+  applyFilter();
+  renderMore();
+  renderSelection();
 }
 
 function browseDrive(cid, context = picker.context) {
@@ -719,12 +1008,14 @@ let tab = "nas";
 const TABS = ["nas", "recent", "cloud", "cloud-done"];
 function selectTab(name) {
   tab = name;
+  picked.clear();
   for (const which of TABS) {
     $("tab-" + which).setAttribute("aria-selected", String(which === name));
     $(which).hidden = which !== name;
   }
   $("nas-note").hidden = name !== "nas" || transfers.live ||
     !transfers.items.some((item) => RUNNING.has(item.state) || item.state === "paused");
+  redraw();
   if (name.startsWith("cloud")) kickCloud();
 }
 
@@ -797,6 +1088,20 @@ $("sort").addEventListener("change", () => {
 $("close").addEventListener("click", closePicker);
 $("fetch").addEventListener("click", fetchSelected);
 $("whole").addEventListener("click", fetchWhole);
+$("remove").addEventListener("click", deleteSelected);
+$("bulk-all").addEventListener("change", () => {
+  if ($("bulk-all").checked) (pickable[tab] || []).forEach((key) => picked.add(key));
+  else picked.clear();
+  redraw();
+});
+$("bulk-delete").addEventListener("click", () => (tab === "recent" ? deleteNas([...picked]) : deleteTasks([...picked])));
+$("cloud-more-btn").addEventListener("click", moreFailures);
+$("cloud-done-more-btn").addEventListener("click", () => loadOlder("done"));
+$("confirm-ok").addEventListener("click", () => $("confirm").close("ok"));
+$("confirm-cancel").addEventListener("click", () => $("confirm").close());
+$("confirm").addEventListener("click", (event) => {
+  if (event.target === $("confirm")) $("confirm").close();  // Click on the backdrop.
+});
 $("all").addEventListener("change", () => {
   const value = $("all").checked;
   picker.rows.forEach((ref, index) => { if (!ref.row.hidden) check(index, value); });

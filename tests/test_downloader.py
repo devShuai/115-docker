@@ -839,6 +839,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual((data["live"], data["active"]), (False, 1))
         self.assertEqual((data["items"][0]["id"], data["items"][0]["state"], data["items"][0]["progress"]),
                          ("h3", "downloading", 0.4))
+        self.assertEqual((data["items"][0]["local_id"], data["items"][0]["exists"]), (3, None))   # 还在下载：不说在不在
 
     def test_transfers_are_live_or_fall_back_to_history(self):
         self.cloud.live = [
@@ -949,6 +950,27 @@ class ViewTests(unittest.TestCase):
         self.assertEqual(server.transfer_view(dict(base, status=0, hash=1, folder=True))["state"], "downloading")
         self.assertEqual([server.transfer_view(dict(base, status=code))["state"] for code in (1, 2, 3, 4, 9)],
                          ["paused", "done", "failed", "waiting", "waiting"])
+
+    def test_finished_transfers_carry_their_download_id_and_whether_the_file_is_still_there(self):
+        with tempfile.TemporaryDirectory() as directory:
+            kept = Path(directory) / "kept.mkv"
+            kept.write_bytes(b"x")
+            rows = [{"id": 5, "name": "kept.mkv", "path": str(kept), "received": 1, "total": 1, "key": "done", "finished": 1},
+                    {"id": 6, "name": "gone.mkv", "path": str(Path(directory) / "gone.mkv"), "received": 1, "total": 1,
+                     "key": "done", "finished": 1},
+                    {"id": 7, "name": "run.mkv", "path": str(Path(directory) / "run.mkv"), "received": 0, "total": 9,
+                     "key": "downloading", "finished": None}]
+            live = [{"id": 5, "name": "kept.mkv", "status": 2}, {"id": 6, "name": "gone.mkv", "status": 2},
+                    {"id": 7, "name": "run.mkv", "status": 0}, {"id": 8, "name": "new.mkv", "status": 2},
+                    {"id": 5, "name": "renamed.mkv", "status": 2}]
+            self.assertEqual([(item["local_id"], item["exists"]) for item in server.live_transfers(live, rows)],
+                             [(5, True), (6, False), (7, None), (None, None), (None, None)])
+            history_items = [server.history_transfer(row, index) for index, row in enumerate(rows)]
+            self.assertEqual([(item["local_id"], item["exists"]) for item in history_items], [(5, True), (6, False), (7, None)])
+            no_path = server.history_transfer({"name": "a", "received": 1, "total": 1, "key": "done", "finished": None}, 0)
+            self.assertEqual((no_path["local_id"], no_path["exists"]), (None, None))
+            self.assertEqual((server.transfer_view({"id": 1, "status": 2})["local_id"],
+                              server.transfer_view({"id": 1, "status": 2})["exists"]), (None, None))
 
     def test_history_rows_become_transfers(self):
         row = {"name": "a.iso", "received": 512, "total": 1024, "key": "downloading", "finished": None}

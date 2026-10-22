@@ -27,8 +27,12 @@ function page() {
     sync: (_list, items, _key, build) => {
       context.rows = items.map(item => { const node = {}; build(node, item); return node.view; });
     },
+    pickable: {},
+    renderBulk: () => {},
+    selectView: (_node, key) => ({on: false, key}),
   });
-  vm.runInContext("let transfers; let tab = 'nas';\n" + extract('transferRow') + '\n' + extract('refreshTransfers'), context);
+  vm.runInContext("let transfers, transfersLoaded = false; let tab = 'nas';\n" +
+    ['transferRow', 'onNas', 'refreshTransfers', 'renderTransfers'].map(extract).join('\n'), context);
   return {context, elements};
 }
 
@@ -49,6 +53,26 @@ test('a fresh completion replaces 0%, clears the header and shows the finished r
   assert.equal(elements.get('activity-pct').textContent, '');
   assert.equal(elements.get('top-progress').hidden, true);
   assert.equal(context.document.title, '115 下载');
+});
+
+test('finished files still on the NAS can be ticked; removed ones are marked and cannot', async () => {
+  const {context} = page();
+  context.api = async () => ({live: true, active: 0, progress: null, items: [
+    {id: '7', state: 'done', progress: 1, name: 'kept.mkv', total: '1 GB', local_id: 7, exists: true},
+    {id: '8', state: 'done', progress: 1, name: 'gone.mkv', total: '2 GB', local_id: 8, exists: false},
+    {id: '9', state: 'done', progress: 1, name: 'unknown.mkv', local_id: null, exists: null},
+    {id: '10', state: 'failed', progress: 0, name: 'bad.mkv', error: '网络错误', local_id: 10, exists: null},
+  ]});
+  await vm.runInContext('refreshTransfers()', context);
+  const [kept, gone, unknown, failed] = context.rows;
+  assert.equal(kept.select.key, '7');
+  assert.equal(kept.gone, undefined);
+  assert.equal(gone.select.off, '文件已不在 NAS 上');
+  assert.equal(gone.gone, true);
+  assert.equal(gone.meta[0], '已不在 NAS 上');
+  assert.equal(unknown.select.off, '找不到它的下载记录', 'without a download record there is nothing to delete by');
+  assert.equal(failed.select.off, '没有下载完成，NAS 上没有文件');
+  assert.deepEqual([...context.pickable.recent], ['7']);
 });
 
 test('a failed progress request shows retry state and the next success recovers', async () => {

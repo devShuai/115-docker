@@ -141,7 +141,14 @@ def transfer_view(item):
             "remain": _number(item.get("remain")) if state == "downloading" else 0,
             "received": "" if amount(received) == 0 else _tidy(received),
             "total": "" if total in ("unknown", "大小未知") else _tidy(total),
-            "folder": bool(item.get("folder")), "error": item.get("error") or "", "ended": item.get("ended") or ""}
+            "folder": bool(item.get("folder")), "error": item.get("error") or "", "ended": item.get("ended") or "",
+            "local_id": None, "exists": None}
+
+
+def on_nas(row, state):
+    """Whether a finished download's file is still on the NAS; None until it is done or without a path."""
+    path = row.get("path")
+    return os.path.isfile(path) if state == "done" and path else None
 
 
 def delete_local(profile_dir, ids, root):
@@ -230,7 +237,7 @@ def history_transfer(row, index, written=None, speed=0.0):
             "verify": None, "speed": human_size(speed) + "/s" if running else "",
             "remain": int((total - received) / speed) if running and total > received else 0,
             "received": human_size(received), "total": human_size(total) if total > 0 else "",
-            "folder": False, "error": "", "ended": ended}
+            "folder": False, "error": "", "ended": ended, "local_id": row.get("id"), "exists": on_nas(row, state)}
 
 
 def live_transfers(live, recorded, written=None):
@@ -239,6 +246,7 @@ def live_transfers(live, recorded, written=None):
     completed = {(str(row["id"]), row["name"]): row for row in recorded
                  if row.get("id") is not None and row.get("key") == "done"}
     running = {str(row["id"]): row for row in recorded if row.get("id") is not None and row.get("key") == "downloading"}
+    known = {(str(row["id"]), row["name"]): row for row in recorded if row.get("id") is not None}
     items = []
     for raw in live:
         item = transfer_view(raw)
@@ -258,6 +266,10 @@ def live_transfers(live, recorded, written=None):
                 item.update(progress=min(1.0, got / total), received=human_size(got), total=human_size(total))
                 if not item["speed"] and speed > 0:
                     item.update(speed=human_size(speed) + "/s", remain=int((total - got) / speed))
+        record = known.get((item["id"], item["name"]))
+        if record:
+            # The same download in the history: its id deletes the file (local-delete).
+            item.update(local_id=record["id"], exists=on_nas(record, item["state"]))
         items.append(item)
     return items
 

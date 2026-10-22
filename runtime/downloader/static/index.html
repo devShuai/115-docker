@@ -86,6 +86,7 @@
       <div class="picker-foot">
         <span id="selection" class="selection">未选择</span>
         <span class="actions">
+          <button id="remove" class="btn delete" type="button" title="移到 115 回收站" hidden disabled>删除</button>
           <button id="whole" class="btn" type="button" hidden>下载整个文件夹</button>
           <button id="fetch" class="btn primary" type="button" disabled>下载到 NAS</button>
         </span>
@@ -99,11 +100,17 @@
         <button id="tab-cloud" class="tab" type="button" role="tab" aria-selected="false" aria-controls="cloud">云下载<span id="count-cloud" class="count"></span></button>
         <button id="tab-cloud-done" class="tab" type="button" role="tab" aria-selected="false" aria-controls="cloud-done">云下载完成</button>
       </div>
+      <div id="bulk" class="bulk" hidden>
+        <label class="check"><input id="bulk-all" type="checkbox"><span id="bulk-text">全选</span></label>
+        <button id="bulk-delete" class="btn delete" type="button" disabled>删除</button>
+      </div>
       <ul id="nas" class="tasks" role="tabpanel" aria-labelledby="tab-nas"></ul>
       <p id="nas-note" class="note" hidden>115 浏览器的传输列表没有打开，进度按磁盘上已写入的数据估算。</p>
       <ul id="recent" class="tasks" role="tabpanel" aria-labelledby="tab-recent" hidden></ul>
       <ul id="cloud" class="tasks" role="tabpanel" aria-labelledby="tab-cloud" hidden></ul>
+      <p id="cloud-more" class="note more" hidden><span id="cloud-more-text"></span><button id="cloud-more-btn" class="btn ghost" type="button">加载更多</button></p>
       <ul id="cloud-done" class="tasks" role="tabpanel" aria-labelledby="tab-cloud-done" hidden></ul>
+      <p id="cloud-done-more" class="note more" hidden><span id="cloud-done-more-text"></span><button id="cloud-done-more-btn" class="btn ghost" type="button">加载更多</button></p>
     </section>
 
   </main>
@@ -151,6 +158,18 @@
       </section>
     </div>
     <div class="cli-foot"><span>完整文档</span><nav id="cli-resources" aria-label="完整文档"></nav></div>
+  </dialog>
+
+  <dialog id="confirm" class="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+    <div class="confirm-box">
+      <strong id="confirm-title" class="confirm-title"></strong>
+      <p id="confirm-body" class="confirm-body"></p>
+      <label id="confirm-option" class="check confirm-option" hidden><input id="confirm-check" type="checkbox"><span id="confirm-check-text"></span></label>
+      <div class="confirm-foot">
+        <button id="confirm-cancel" class="btn" type="button">取消</button>
+        <button id="confirm-ok" class="btn danger" type="button">删除</button>
+      </div>
+    </div>
   </dialog>
 </body>
 </html>
