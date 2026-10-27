@@ -186,6 +186,14 @@ _SHARE_ID = re.compile(r"[0-9]{1,32}")
 _TASK_HASH = re.compile(r"[0-9A-Za-z]{8,64}")
 
 
+def pick_code(value):
+    """A drive file's pick code (pc), as directory listings give it."""
+    value = "" if value is None else str(value)
+    if _PICK_CODE.fullmatch(value):
+        return value
+    raise ValueError("pc 无效：用目录或搜索结果里的 items[].pc")
+
+
 def folder_id(value, share=False):
     """Drive folders are numeric ids ("0" is the root); a share's top level is ""."""
     value = "" if value is None else str(value)

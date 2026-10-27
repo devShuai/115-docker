@@ -51,6 +51,9 @@ ENDPOINTS = [
     {"cmd": "local-delete", "method": "POST", "path": "/api/local/delete", "summary": "删除 NAS 上下载好的文件",
      "params": [{"name": "ids", "in": "body", "required": True, "desc": "local 记录的 downloads[].id"}]},
     {"cmd": "watch", "method": "GET", "path": "/api/watch", "summary": "等待下到 NAS 的任务", "params": []},
+    {"cmd": "play", "method": "GET", "path": "/api/play", "summary": "网盘视频的播放地址：115 转码的 HLS 和原文件",
+     "params": [{"name": "pc", "in": "query", "desc": "视频文件的 pick code（目录或搜索结果的 items[].pc）"},
+                {"name": "cid", "in": "query", "desc": "改为列出这个目录里的视频，大的在前"}]},
 ]
 
 
@@ -110,6 +113,8 @@ SCHEMAS = {
                "files": {"type": "boolean", "default": False, "description": "true 时 115 同时删除任务存到网盘的文件"}},
     "local-delete": {"ids": {"type": "array", "minItems": 1, "maxItems": 200, "items": {"type": "integer", "minimum": 1},
                              "description": "GET /api/local 的 downloads[].id"}},
+    "play": {"pc": {"type": "string", "pattern": "^[A-Za-z0-9]{1,64}$", "description": "pc 和 cid 给一个；有 cid 时只列目录里的视频"},
+             "cid": {"type": "string", "pattern": "^[0-9]{1,32}$"}},
 }
 LISTING = {"kind": "drive", "cid": "0", "path": [{"cid": "0", "name": "网盘"}],
            "count": 1, "offset": 0, "truncated": False, "sort": "time", "asc": False,
@@ -164,6 +169,11 @@ EXAMPLES = {
                      "115dl --json local-delete 42"),
     "watch": ({}, {"tasks": [{"hash": "a"*40, "name": "example.mkv", "url": MAGNET,
                "added": 1760000000, "status": "已开始下载到 NAS", "sent": 1760000001}]}, "115dl --json watch"),
+    "play": ({"pc": "abc123"}, {"pc": "abc123", "name": "example.mkv", "ext": "mkv", "size": 1024, "duration": 7200,
+              "width": 1920, "height": 1080, "transcoded": True,
+              "variants": [{"name": "UD", "resolution": "1920x1080", "bandwidth": 7500000}],
+              "hls": "/api/play/abc123/master.m3u8", "file": "/api/play/abc123/file", "error": ""},
+             "115dl --json play abc123"),
 }
 NOTES = {
     "status": "logged_in=false 需在桌面登录；null 表示暂时无法判断，不等于已退出。",
@@ -188,6 +198,9 @@ NOTES = {
     "local-delete": "直接从 NAS 删除，不能恢复。只删下载目录里的普通文件，下载中的、符号链接和目录外的都不删；"
                     "删空的文件夹一并删掉。下载历史记录保留，local 里显示 exists=false。",
     "watch": "status 是中文状态：等待云下载完成 / 已开始下载到 NAS / 云下载失败。sent 表示已发送，不等于本地完成；数据持久化在配置卷。",
+    "play": "只读，不下载。hls、file 是播放资源（需相同认证）：hls 是 115 转码的 HLS 主播单，里面是相对地址 v<n>.m3u8 → v<n>/<i>.ts；"
+            "file 是原文件，支持 Range。115 把这些地址绑定在 115 浏览器的 User-Agent 上，所以都由本服务转发，地址过期时自动重取。"
+            "115 还没转好码时 hls 为空、error 写原因，仍可试 file。给 cid 时返回 {cid, videos:[{pc,name,size,duration}]}。",
 }
 FIELDS = {
     "status": {"browser": "浏览器是否可用 boolean", "logged_in": "boolean 或 null，当前 115 登录状态",
@@ -225,6 +238,10 @@ FIELDS = {
     "local-delete": {"deleted[] / missing[]": "已删除的 / 文件本来就不在的 {id,name}",
                      "failed[]": "没删的 {id,name,error}：下载中、不在下载目录里或删除出错"},
     "watch": {"tasks[]": "hash、name、url、added（Unix 秒）、status（中文）；sent（发起时间）与 message（说明）可能省略"},
+    "play": {"pc / name / ext / size": "pick code / 文件名 / 扩展名 / 字节", "duration / width / height": "秒 / 画面宽高（像素）",
+             "transcoded": "115 是否转好了码", "variants[]": "转码的各个清晰度：name、resolution、bandwidth（bps）",
+             "hls / file": "HLS 主播单 / 原文件的地址（本服务上的路径），没有时为空字符串", "error": "hls 为空的原因",
+             "cid / videos[]": "给 cid 时：目录 ID / 里面的视频 {pc,name,size,duration}，大的在前"},
 }
 ERRORS = [{"status": code, "desc": desc} for code, desc in [
     (400, "参数无效、无效 JSON、路径/任务不存在或云下载未就绪"), (401, "需要 HTTP Basic 认证或凭据错误"),
@@ -236,6 +253,7 @@ RESOURCES = [
     {"path": "/115dl.py", "summary": "独立 CLI 源码；Python 3.8+ 标准库，无 pip 依赖"},
     {"path": "/agent.md", "summary": "agent 安装步骤、完整接口说明和任务执行流程"},
     {"path": "/openapi.json", "summary": "OpenAPI 3.1 文档，可供 agent 和 API 工具读取"},
+    {"path": "/api/play/{pc}/master.m3u8、/api/play/{pc}/file", "summary": "网盘视频的 HLS 播单（分段也经本服务转发）和原文件（支持 Range）；先调 play 接口"},
 ]
 for endpoint in ENDPOINTS:
     cmd = endpoint["cmd"]
@@ -327,6 +345,13 @@ RESPONSE_SCHEMAS = {
         "failed": array_schema(object_schema({"id": INT, "name": STRING, "error": STRING}))}),
     "watch": object_schema({"tasks": array_schema(object_schema({"hash": STRING, "name": STRING,
         "url": STRING, "added": INT, "status": STRING, "sent": INT, "message": STRING}))}),
+    "play": {"oneOf": [
+        object_schema({"pc": STRING, "name": STRING, "ext": STRING, "size": INT, "duration": INT, "width": INT, "height": INT,
+                       "transcoded": BOOL, "variants": array_schema(object_schema({"name": STRING, "resolution": STRING,
+                                                                                   "bandwidth": INT})),
+                       "hls": STRING, "file": STRING, "error": STRING}, ["pc", "hls", "file"]),
+        object_schema({"cid": STRING, "videos": array_schema(object_schema({"pc": STRING, "name": STRING, "size": INT,
+                                                                             "duration": INT}))}, ["cid", "videos"])]},
 }
 
 

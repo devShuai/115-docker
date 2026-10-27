@@ -28,6 +28,7 @@ python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json apis
 - **搜索**：`search 关键词` 用 115 网盘自己的搜索按名字找文件和文件夹（`--cid` 只搜某个目录），翻页用 `--offset`。结果条目和目录列表一样：下载时 `name` 映射为 `n` 并复制 `pc`、`is_dir`；`parent` 是所在目录 ID，`parent_name` 是目录名（可能为空）。`offline --q 关键词` 按名字搜索云下载任务，每页 30 个。
 - **云下载**：`add` 提交 magnet/ed2k/HTTP(S)/FTP 链接；检查响应的 `failed`，HTTP 200 仍可能部分失败。用户要求完成后下载到 NAS 时加 `--to-nas`。否则先查询 `offline`，在 `ready=true` 后使用 `content HASH` 获取可选内容。
 - **NAS 下载**：用 `download --path` 下载整项，或用 `--items` 下载用户选择的内容。`share` 带原分享链接与提取码；省略 `--items` 会下载分享全部内容，只有用户要求下载全部时才省略。
+- **播放**：`play <pc>` 查网盘视频能怎么播：`hls` 是 115 转码的 HLS 主播单、`file` 是原文件（支持 Range），都是本服务上的地址，用同样的认证去取；`--cid` 列出目录里的视频（大的在前）。只读，不下载；115 没转好码时 `hls` 为空、`error` 写原因。
 - **进度**：`transfers` 查询实时传输；`live=false` 时数据来自下载历史，进度按磁盘上已写入的数据估算，可用 `local` 核对。云下载 `percent` 是 0–100，NAS `progress` 是 0–1；最终完成以 `state=done` / `key=done` 为准。`verifying` 仍在校验。`watch` 的“已开始下载到 NAS”表示已提交，还需要跟踪本地完成状态。
 
 ## 常见示例

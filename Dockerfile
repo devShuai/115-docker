@@ -68,6 +68,7 @@ RUN mkdir -p /etc/115 /opt/Downloads /opt/.cache /opt/.config \
     && test -f /usr/share/applications/115Browser.desktop \
     && test -f /opt/115/downloader/server.py \
     && test -f /opt/115/downloader/session.py \
+    && test -f /opt/115/downloader/play.py \
     && test -x /usr/local/bin/115dl \
     && python3 -c "import ast,sys; [ast.parse(open(f).read()) for f in sys.argv[1:]]" /opt/115/downloader/cli.py /opt/115/downloader/session.py
 

@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 from urllib.error import URLError
 
@@ -23,6 +24,7 @@ import client  # noqa: E402
 import history  # noqa: E402
 import jobs  # noqa: E402
 import links  # noqa: E402
+import play  # noqa: E402
 import server  # noqa: E402
 import session  # noqa: E402
 
@@ -756,7 +758,7 @@ class ServerTests(unittest.TestCase):
     def test_complete_reference_and_openapi_cover_every_operation(self):
         spec = json.loads(self.request("GET", "/openapi.json")[2])
         docs = json.loads(self.request("GET", "/api/endpoints")[2])
-        self.assertEqual(len(docs["endpoints"]), 16)
+        self.assertEqual(len(docs["endpoints"]), 17)
         self.assertEqual(spec["security"], [{"desktopBasic": []}])
         for item in docs["endpoints"]:
             operation = spec["paths"][item["path"]][item["method"].lower()]
@@ -1229,6 +1231,160 @@ class CliTests(unittest.TestCase):
                 code = cli.main(["--no-input", "--json", "status"])
         self.assertEqual(code, 2)
         self.assertIn("缺少密码", json.loads(err.getvalue())["error"])
+
+
+UA = "Mozilla/5.0 115Browser/27.0 (test)"
+
+
+class Upstream115(BaseHTTPRequestHandler):
+    """Stands in for 115's video CDN: everything is bound to the browser's User-Agent; Range works; a path listed in
+    expired answers 403 (a signature that ran out)."""
+    files = {"/sig1/ud.m3u8": b"#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10,\nseg0.ts?t=1\n#EXTINF:10,\nseg1.ts?t=1\n#EXT-X-ENDLIST\n",
+             "/sig2/ud.m3u8": b"#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10,\nseg0.ts?t=2\n#EXTINF:10,\nseg1.ts?t=2\n#EXT-X-ENDLIST\n",
+             "/sig1/seg1.ts": b"0123456789", "/sig2/seg1.ts": b"abcdefghij", "/origin.mkv": b"MKVDATA-0123456789"}
+    expired = set()
+    seen = []
+
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        type(self).seen.append((path, self.headers.get("User-Agent"), self.headers.get("Range")))
+        if self.headers.get("User-Agent") != UA or path in type(self).expired or path not in self.files:
+            self.send_response(403)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        data, status = self.files[path], 200
+        extra = {"Accept-Ranges": "bytes"}
+        rng = self.headers.get("Range")
+        if rng and rng.startswith("bytes="):
+            start, _, end = rng[6:].partition("-")
+            start, end = int(start), int(end) if end else len(data) - 1
+            extra["Content-Range"] = f"bytes {start}-{end}/{len(data)}"
+            data, status = data[start:end + 1], 206
+        self.send_response(status)
+        content_type = "application/vnd.apple.mpegurl" if path.endswith(".m3u8") else (
+            "video/mp2t" if path.endswith(".ts") else "application/octet-stream")
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        for key, value in extra.items():
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(data)
+
+
+class VideoCloud:
+    """The parts of Cloud115 playback uses: the browser UA, files/video (the master playlist is read in the page,
+    with cookies) and a folder's videos."""
+
+    def __init__(self, base):
+        self.base, self.calls, self.signature, self.media = base, [], "sig1", False
+
+    def user_agent(self):
+        return UA
+
+    def video(self, pc):
+        self.calls.append(("video", pc))
+        if self.media:
+            master = (f"#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10,\n{self.base}/{self.signature}/seg0.ts?t=1\n"
+                      f"#EXTINF:10,\n{self.base}/{self.signature}/seg1.ts?t=1\n#EXT-X-ENDLIST\n")
+        else:
+            master = (f'#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=7500000,RESOLUTION=1920x1080,NAME="UD"\n'
+                      f"{self.base}/{self.signature}/ud.m3u8\n")
+        return {"state": True, "name": "ABC-123.mkv", "size": 18, "duration": 20, "width": 1920, "height": 1080,
+                "transcoded": True, "master_url": "https://115.com/api/video/m3u8/x.m3u8", "master": master,
+                "origin": f"{self.base}/origin.mkv"}
+
+    def folder_videos(self, cid):
+        self.calls.append(("folder", cid))
+        return [{"pc": "pcbig", "name": "ABC-123.mkv", "size": 18, "duration": 20}]
+
+
+class PlayTests(unittest.TestCase):
+    def setUp(self):
+        Upstream115.expired, Upstream115.seen = set(), []
+        self.cdn = ThreadingHTTPServer(("127.0.0.1", 0), Upstream115)
+        threading.Thread(target=self.cdn.serve_forever, daemon=True).start()
+        self.addCleanup(self.cdn.server_close)
+        self.addCleanup(self.cdn.shutdown)
+        self.cloud = VideoCloud(f"http://127.0.0.1:{self.cdn.server_address[1]}")
+        self.player = play.Player(self.cloud)
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        app = server.App(self.cloud, FakeWatcher(), "115", auth.encode("Check123"), self.temporary.name, player=self.player)
+        self.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.handler_for(app))
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.addCleanup(self.httpd.server_close)
+        self.addCleanup(self.httpd.shutdown)
+
+    def get(self, path, headers=None, password="Check123"):
+        headers = dict(headers or {})
+        if password:
+            headers["Authorization"] = "Basic " + base64.b64encode(f"115:{password}".encode()).decode()
+        connection = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=10)
+        try:
+            connection.request("GET", path, headers=headers)
+            response = connection.getresponse()
+            return response.status, dict(response.getheaders()), response.read()
+        finally:
+            connection.close()
+
+    def test_info_and_rewritten_playlists(self):
+        info = self.player.info("pc1")
+        self.assertEqual((info["hls"], info["file"], info["ext"], info["transcoded"]),
+                         ("/api/play/pc1/master.m3u8", "/api/play/pc1/file", "mkv", True))
+        self.assertEqual(info["variants"], [{"name": "UD", "resolution": "1920x1080", "bandwidth": 7500000}])
+        master = self.player.master("pc1").decode()
+        self.assertIn("\nv0.m3u8\n", master)
+        self.assertNotIn("127.0.0.1", master)                                     # 带签名的地址留在服务端
+        variant = self.player.variant("pc1", 0).decode()
+        self.assertEqual([l for l in variant.splitlines() if not l.startswith("#")], ["v0/0.ts", "v0/1.ts"])
+        self.assertEqual(self.cloud.calls, [("video", "pc1")])                   # 20 分钟内不重取
+
+    def test_segments_and_file_use_the_browser_agent_and_ranges(self):
+        seg = self.player.segment("pc1", 0, 1, "bytes=2-5")
+        self.assertEqual((seg.status, b"".join(seg.chunks()), seg.headers["Content-Range"]), (206, b"2345", "bytes 2-5/10"))
+        whole = self.player.file("pc1", "bytes=0-6")
+        self.assertEqual((whole.status, b"".join(whole.chunks())), (206, b"MKVDATA"))
+        self.assertEqual(whole.headers["Content-Type"], "video/x-matroska")      # 115 给的是 octet-stream
+        self.assertTrue(all(ua == UA for _, ua, _ in Upstream115.seen))
+
+    def test_expired_signatures_resolve_again(self):
+        self.player.variant("pc1", 0)
+        Upstream115.expired = {"/sig1/seg1.ts", "/sig1/ud.m3u8"}
+        self.cloud.signature = "sig2"
+        seg = self.player.segment("pc1", 0, 1)
+        self.assertEqual((seg.status, b"".join(seg.chunks())), (200, b"abcdefghij"))
+        self.assertEqual(self.cloud.calls, [("video", "pc1"), ("video", "pc1")])
+
+    def test_media_playlist_from_the_page_is_variant_zero(self):
+        self.cloud.media = True
+        self.assertEqual(self.player.master("pc1").decode().splitlines()[-1], "v0.m3u8")
+        variant = self.player.variant("pc1", 0).decode()
+        self.assertIn("v0/1.ts", variant)
+        seg = self.player.segment("pc1", 0, 1, "bytes=0-1")
+        self.assertEqual(b"".join(seg.chunks()), b"01")
+
+    def test_http_routes(self):
+        self.assertEqual(self.get("/api/play/pc1/master.m3u8", password=None)[0], 401)
+        status, _, body = self.get("/api/play?pc=pc1")
+        self.assertEqual((status, json.loads(body)["hls"]), (200, "/api/play/pc1/master.m3u8"))
+        status, headers, body = self.get("/api/play/pc1/master.m3u8")
+        self.assertEqual((status, headers["Content-Type"]), (200, play.PLAYLIST_TYPE))
+        self.assertEqual(self.get("/api/play/pc1/v0.m3u8")[0], 200)
+        status, headers, body = self.get("/api/play/pc1/v0/1.ts", {"Range": "bytes=1-3"})
+        self.assertEqual((status, body, headers["Content-Range"], headers["Content-Type"]), (206, b"123", "bytes 1-3/10", "video/mp2t"))
+        status, headers, body = self.get("/api/play/pc1/file", {"Range": "bytes=8-"})
+        self.assertEqual((status, body, headers["Accept-Ranges"]), (206, b"0123456789", "bytes"))
+        self.assertEqual(self.get("/api/play/pc1/v5.m3u8")[0], 404)
+        self.assertEqual(self.get("/api/play/pc1/v0/9.ts")[0], 404)
+        self.assertEqual(self.get("/api/play/pc1/other")[0], 404)
+        self.assertEqual(self.get("/api/play?pc=bad*pc")[0], 400)
+        status, _, body = self.get("/api/play?cid=77")
+        self.assertEqual((status, json.loads(body)["videos"][0]["pc"]), (200, "pcbig"))
+        self.assertEqual(self.get("/api/play?cid=x")[0], 400)
 
 
 if __name__ == "__main__":

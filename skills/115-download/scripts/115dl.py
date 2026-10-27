@@ -8,6 +8,7 @@ Examples:
   115dl inspect '/电影/某文件夹'
   115dl browse --cid 0 --sort time
   115dl search 关键词                         # search the whole drive by name
+  115dl play <pc>                             # how a drive video can be played (HLS / original file)
   115dl download --path '/电影/某文件夹'
   115dl share 'https://115cdn.com/s/xxx?password=abcd'
   115dl transfers
@@ -148,6 +149,20 @@ def show_search(data, _):
               f"{item.get('pc', ''):<18} {item.get('name', '')}  （在 {where}）")
 
 
+def show_play(data, _):
+    if "videos" in data:
+        print(f"目录 {data.get('cid', '')} 里的视频 {len(data['videos'])} 个")
+        for item in data["videos"]:
+            print(f"  {size(item.get('size')):>10}  {item.get('pc', ''):<18} {item.get('name', '')}")
+        return
+    print(f"{data.get('name', '')}  {size(data.get('size'))}  {data.get('width', 0)}x{data.get('height', 0)}"
+          f"  {data.get('duration', 0)} 秒")
+    for item in data.get("variants") or []:
+        print(f"  转码 {item.get('name', '')} {item.get('resolution', '')} {item.get('bandwidth', 0) // 1000} kbps")
+    print("  HLS:", data.get("hls") or "（没有：" + (data.get("error") or "115 还没转好码") + "）")
+    print("  原文件:", data.get("file") or "（没有）")
+
+
 def show_offline(data, _):
     for task in data.get("tasks") or []:
         extra = f" {task['percent']:.0f}%" if task.get("state") == "downloading" else ""
@@ -247,6 +262,10 @@ def run(args):
         return api.request("POST", "/api/browse", _clean(body)), show_listing
     if args.command == "search":
         return api.request("GET", "/api/search", query={"q": args.q, "offset": args.offset, "cid": args.cid}), show_search
+    if args.command == "play":
+        if not args.pc and not args.cid:
+            raise SystemExit("play 要给 pc，或者用 --cid 列出目录里的视频")
+        return api.request("GET", "/api/play", query={"pc": None if args.cid else args.pc, "cid": args.cid}), show_play
     if args.command == "download":
         if not args.path and not args.items:
             raise ApiError("需要 --path 或 --items")
@@ -343,6 +362,9 @@ def build_parser():
     search.add_argument("q", metavar="关键词")
     search.add_argument("--offset", type=int, help="翻页：从第几项开始")
     search.add_argument("--cid", help="只搜这个目录，默认整个网盘")
+    play = sub.add_parser("play", help="网盘视频的播放地址（HLS 和原文件）")
+    play.add_argument("pc", nargs="?", metavar="pc", help="视频文件的 pick code")
+    play.add_argument("--cid", help="改为列出这个目录里的视频")
     download = sub.add_parser("download", help="下载网盘内容到 NAS")
     download.add_argument("--path", help="网盘路径（整项下载）")
     download.add_argument("--items", help='勾选条目的 JSON：[{"n":..,"pc":..,"is_dir":false}]')

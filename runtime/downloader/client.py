@@ -151,6 +151,34 @@ DELETE_OFFLINE = _page_function("""
   args.hashes.forEach((hash, index) => { fields["hash[" + index + "]"] = hash; });
   const result = await lixian("task_del", fields);
   return result.not_json ? {login: false} : result;""")
+# Playback, read-only. webapi files/video gives 115's transcoded HLS (video_url, a master playlist on 115.com)
+# and the original file (origin_file_url, on 115's CDN). The master playlist needs the login cookies, so the page
+# reads it (same origin); the variant playlists, segments and the original file only need the browser's User-Agent.
+VIDEO = _page_function("""
+  if (!uid) return {login: false};
+  const v = await getJSON("https://webapi.115.com/files/video?pickcode=" + encodeURIComponent(args.pc) + "&share_id=0&local=1");
+  if (v.not_json) return {login: false};
+  if (!v.state) return v;
+  let master = "", masterError = "";
+  if (v.video_url) {
+    try {
+      const response = await fetch(v.video_url, {credentials: "include", cache: "no-store"});
+      if (response.ok) master = await response.text(); else masterError = "HTTP " + response.status;
+    } catch (error) { masterError = String(error).slice(0, 120); }
+  }
+  return {state: true, name: v.file_name || "", size: Number(v.file_size) || 0, duration: Number(v.play_long) || 0,
+          width: Number(v.width) || 0, height: Number(v.height) || 0, transcoded: Number(v.file_status) === 1,
+          master_url: v.video_url || "", master, master_error: masterError,
+          origin: typeof v.origin_file_url === "string" ? v.origin_file_url : ""};""")
+# The videos in a folder (type=4 = video), biggest first: a downloaded movie is often a folder.
+FOLDER_VIDEOS = _page_function("""
+  if (!uid) return {login: false};
+  const query = new URLSearchParams({aid: "1", cid: args.cid, type: "4", show_dir: "0", offset: "0", limit: "100",
+                                     format: "json", custom_order: "1", o: "file_size", asc: "0", fc_mix: "0", natsort: "0"});
+  const page = await getJSON("https://webapi.115.com/files?" + query);
+  if (page.not_json) return {login: false};
+  return {state: !!page.state, error: page.error || "", items: (page.data || []).filter(item => item.pc && item.fid)
+    .map(item => ({pc: item.pc, name: item.n || "", size: Number(item.s) || 0, duration: Number(item.play_long) || 0}))};""")
 # Read-only: the browser's transfer list page (transfer-frame) keeps live state for each download.
 # _status: 0 downloading, 1 paused, 2 finished, 3 failed, 4 waiting.
 TRANSFERS = """async function () {
@@ -277,6 +305,24 @@ class Cloud115:
         if result is None:
             return {"browser": True, "logged_in": None}
         return {"browser": True, "logged_in": result["logged_in"], "user_id": result["user_id"]}
+
+    def user_agent(self):
+        """The 115 Browser's User-Agent: 115 binds its video URLs to the UA that asked for them."""
+        return self._json("/json/version").get("User-Agent") or ""
+
+    def video(self, pc):
+        """Playback info for one video file: name, size, duration, size in pixels, the master playlist text
+        (with its URL, for resolving relative entries) and the original file's URL."""
+        result = self._call(VIDEO, {"pc": pc})
+        if not result.get("state"):
+            raise RuntimeError(_message(result, "读取视频信息失败"))
+        return result
+
+    def folder_videos(self, cid):
+        result = self._call(FOLDER_VIDEOS, {"cid": cid})
+        if not result.get("state"):
+            raise RuntimeError(_message(result, "读取文件夹里的视频失败"))
+        return result["items"]
 
     def add_offline(self, urls, folder=""):
         result = self._call(ADD_OFFLINE, {"urls": urls, "folder": folder})

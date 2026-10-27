@@ -22,6 +22,7 @@ import client  # noqa: E402
 import history  # noqa: E402
 import jobs  # noqa: E402
 import links  # noqa: E402
+import play  # noqa: E402
 import session  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -55,6 +56,8 @@ ERRORS = ((ValueError, HTTPStatus.BAD_REQUEST), (client.NotLoggedIn, HTTPStatus.
 ENDPOINTS = apidocs.ENDPOINTS
 # Where the 115 Browser saves to (compose mounts the NAS folder here); NAS deletes stay inside it.
 DOWNLOAD_ROOT = Path(os.environ.get("DOWNLOAD_ROOT") or "/opt/Downloads")
+# Playback resources under /api/play/<pc>/: 115's transcoded HLS (master, variants, segments) and the original file.
+PLAY_PATH = re.compile(r"/api/play/([A-Za-z0-9]{1,64})/(?:(master)\.m3u8|v([0-9]{1,2})\.m3u8|v([0-9]{1,2})/([0-9]{1,6})\.(?:ts|bin)|(file))")
 
 
 class NotFound(Exception):
@@ -307,8 +310,9 @@ def _query_order(query):
 
 
 class App:
-    def __init__(self, cloud, watcher, user, encoded, profile_dir, clock=time.monotonic, download_root=None):
+    def __init__(self, cloud, watcher, user, encoded, profile_dir, clock=time.monotonic, download_root=None, player=None):
         self.cloud, self.watcher, self.user, self.encoded = cloud, watcher, user, encoded
+        self.player = player or play.Player(cloud)
         self.profile_dir, self.clock = profile_dir, clock
         self.download_root = Path(download_root or DOWNLOAD_ROOT)
         self.accepted = set()
@@ -473,7 +477,27 @@ class App:
             q = links.search_query((query.get("q") or [""])[0])
             return self.cloud.search_drive(q, links.offset((query.get("offset") or ["0"])[0]),
                                            links.folder_id((query.get("cid") or ["0"])[0]))
+        if path == "/api/play":
+            cid = (query.get("cid") or [""])[0]
+            if cid:
+                cid = links.folder_id(cid)
+                return {"cid": cid, "videos": self.cloud.folder_videos(cid)}
+            return self.player.info(links.pick_code((query.get("pc") or [""])[0]))
         raise NotFound
+
+    def stream(self, path, range_header=None):
+        """A playback resource: ("playlist", bytes) or ("upstream", play.Upstream)."""
+        match = PLAY_PATH.fullmatch(path)
+        if not match:
+            raise NotFound
+        pc, master, variant, segment_variant, segment, whole = match.groups()
+        if master:
+            return "playlist", self.player.master(pc)
+        if variant is not None:
+            return "playlist", self.player.variant(pc, int(variant))
+        if segment is not None:
+            return "upstream", self.player.segment(pc, int(segment_variant), int(segment), range_header)
+        return "upstream", self.player.file(pc, range_header)
 
     def _share(self, body, cid="", offset=0):
         code = body.get("receive_code")
@@ -572,15 +596,41 @@ def handler_for(app):
         def dispatch(self, action):
             try:
                 self.send(HTTPStatus.OK, action())
-            except NotFound:
-                self.send(HTTPStatus.NOT_FOUND, {"error": "不存在的接口"})
             except Exception as error:
-                for kind, status in ERRORS:
-                    if isinstance(error, kind):
-                        self.send(status, {"error": str(error)})
-                        return
-                print(f"Download API error: {type(error).__name__}: {error}", flush=True)
-                self.send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "内部错误"})
+                self.fail(error)
+
+        def fail(self, error):
+            if isinstance(error, NotFound):
+                self.send(HTTPStatus.NOT_FOUND, {"error": "不存在的接口"})
+                return
+            if isinstance(error, play.Missing):
+                self.send(HTTPStatus.NOT_FOUND, {"error": str(error)})
+                return
+            for kind, status in ERRORS:
+                if isinstance(error, kind):
+                    self.send(status, {"error": str(error)})
+                    return
+            print(f"Download API error: {type(error).__name__}: {error}", flush=True)
+            self.send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "内部错误"})
+
+        def play(self, path):
+            try:
+                kind, result = app.stream(path, self.headers.get("Range"))
+            except Exception as error:
+                self.fail(error)
+                return
+            if kind == "playlist":
+                self.send(HTTPStatus.OK, result, play.PLAYLIST_TYPE)
+                return
+            self.send_response(result.status)
+            for name, value in {**HEADERS, **result.headers}.items():
+                self.send_header(name, value)
+            self.end_headers()
+            try:
+                for chunk in result.chunks():
+                    self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # The player seeked or closed; chunks() closes the upstream response.
 
         def do_GET(self):
             if not self.authorized():
@@ -596,6 +646,9 @@ def handler_for(app):
             if url.path in FILES:
                 name, content_type = FILES[url.path]
                 self.send(HTTPStatus.OK, (STATIC / name).read_bytes(), content_type)
+                return
+            if url.path.startswith("/api/play/"):
+                self.play(url.path)
                 return
             self.dispatch(lambda: app.get(url.path, parse_qs(url.query)))
 

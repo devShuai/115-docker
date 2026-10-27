@@ -40,6 +40,8 @@ HTTP Basic 账号与桌面相同；远程访问使用部署的 HTTPS 入口或 S
 
 - GET /openapi.json：OpenAPI 3.1 文档，可供 agent 和 API 工具读取（需相同认证）
 
+- GET /api/play/{pc}/master.m3u8、/api/play/{pc}/file：网盘视频的 HLS 播单（分段也经本服务转发）和原文件（支持 Range）；先调 play 接口（需相同认证）
+
 ## 通用错误
 
 错误 JSON：`{"error":"说明"}`。
@@ -806,3 +808,56 @@ CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json watch`
 ```
 
 - tasks[]：hash、name、url、added（Unix 秒）、status（中文）；sent（发起时间）与 message（说明）可能省略
+
+## GET /api/play — 网盘视频的播放地址：115 转码的 HLS 和原文件
+
+只读，不下载。hls、file 是播放资源（需相同认证）：hls 是 115 转码的 HLS 主播单，里面是相对地址 v<n>.m3u8 → v<n>/<i>.ts；file 是原文件，支持 Range。115 把这些地址绑定在 115 浏览器的 User-Agent 上，所以都由本服务转发，地址过期时自动重取。115 还没转好码时 hls 为空、error 写原因，仍可试 file。给 cid 时返回 {cid, videos:[{pc,name,size,duration}]}。
+
+CLI：`python3 "$SKILL_DIR/scripts/115dl.py" --no-input --json play abc123`
+
+参数：
+
+- pc (query, 可选)：视频文件的 pick code（目录或搜索结果的 items[].pc）；{"type": "string", "pattern": "^[A-Za-z0-9]{1,64}$", "description": "pc 和 cid 给一个；有 cid 时只列目录里的视频"}
+
+- cid (query, 可选)：改为列出这个目录里的视频，大的在前；{"type": "string", "pattern": "^[0-9]{1,32}$"}
+
+请求：`GET /api/play?pc=abc123`
+
+200 返回示例（示意数据）：
+
+```json
+{
+  "pc": "abc123",
+  "name": "example.mkv",
+  "ext": "mkv",
+  "size": 1024,
+  "duration": 7200,
+  "width": 1920,
+  "height": 1080,
+  "transcoded": true,
+  "variants": [
+    {
+      "name": "UD",
+      "resolution": "1920x1080",
+      "bandwidth": 7500000
+    }
+  ],
+  "hls": "/api/play/abc123/master.m3u8",
+  "file": "/api/play/abc123/file",
+  "error": ""
+}
+```
+
+- pc / name / ext / size：pick code / 文件名 / 扩展名 / 字节
+
+- duration / width / height：秒 / 画面宽高（像素）
+
+- transcoded：115 是否转好了码
+
+- variants[]：转码的各个清晰度：name、resolution、bandwidth（bps）
+
+- hls / file：HLS 主播单 / 原文件的地址（本服务上的路径），没有时为空字符串
+
+- error：hls 为空的原因
+
+- cid / videos[]：给 cid 时：目录 ID / 里面的视频 {pc,name,size,duration}，大的在前

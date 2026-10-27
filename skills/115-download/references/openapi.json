@@ -5923,6 +5923,393 @@
         }
       }
     },
+    "/api/play": {
+      "get": {
+        "operationId": "play",
+        "summary": "网盘视频的播放地址：115 转码的 HLS 和原文件",
+        "description": "只读，不下载。hls、file 是播放资源（需相同认证）：hls 是 115 转码的 HLS 主播单，里面是相对地址 v<n>.m3u8 → v<n>/<i>.ts；file 是原文件，支持 Range。115 把这些地址绑定在 115 浏览器的 User-Agent 上，所以都由本服务转发，地址过期时自动重取。115 还没转好码时 hls 为空、error 写原因，仍可试 file。给 cid 时返回 {cid, videos:[{pc,name,size,duration}]}。",
+        "responses": {
+          "200": {
+            "description": "pc / name / ext / size: pick code / 文件名 / 扩展名 / 字节; duration / width / height: 秒 / 画面宽高（像素）; transcoded: 115 是否转好了码; variants[]: 转码的各个清晰度：name、resolution、bandwidth（bps）; hls / file: HLS 主播单 / 原文件的地址（本服务上的路径），没有时为空字符串; error: hls 为空的原因; cid / videos[]: 给 cid 时：目录 ID / 里面的视频 {pc,name,size,duration}，大的在前",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "pc": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "ext": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "type": "integer"
+                        },
+                        "duration": {
+                          "type": "integer"
+                        },
+                        "width": {
+                          "type": "integer"
+                        },
+                        "height": {
+                          "type": "integer"
+                        },
+                        "transcoded": {
+                          "type": "boolean"
+                        },
+                        "variants": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "resolution": {
+                                "type": "string"
+                              },
+                              "bandwidth": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "hls": {
+                          "type": "string"
+                        },
+                        "file": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "pc",
+                        "hls",
+                        "file"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "cid": {
+                          "type": "string"
+                        },
+                        "videos": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "pc": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "integer"
+                              },
+                              "duration": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "cid",
+                        "videos"
+                      ]
+                    }
+                  ]
+                },
+                "example": {
+                  "pc": "abc123",
+                  "name": "example.mkv",
+                  "ext": "mkv",
+                  "size": 1024,
+                  "duration": 7200,
+                  "width": 1920,
+                  "height": 1080,
+                  "transcoded": true,
+                  "variants": [
+                    {
+                      "name": "UD",
+                      "resolution": "1920x1080",
+                      "bandwidth": 7500000
+                    }
+                  ],
+                  "hls": "/api/play/abc123/master.m3u8",
+                  "file": "/api/play/abc123/file",
+                  "error": ""
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数无效、无效 JSON、路径/任务不存在或云下载未就绪",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "参数无效、无效 JSON、路径/任务不存在或云下载未就绪"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "需要 HTTP Basic 认证或凭据错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "需要 HTTP Basic 认证或凭据错误"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "POST 的 Origin 与 Host 不匹配",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "POST 的 Origin 与 Host 不匹配"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "不存在的接口",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "不存在的接口"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "JSON 请求体超过 64 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "JSON 请求体超过 64 KiB"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "POST Content-Type 必须为 application/json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "POST Content-Type 必须为 application/json"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "同一来源 10 次认证失败后等待 10 分钟",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "同一来源 10 次认证失败后等待 10 分钟"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "115 未登录或需要安全验证，在远程桌面完成后再调用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "115 未登录或需要安全验证，在远程桌面完成后再调用"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "内部错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "内部错误"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "115 上游接口或浏览器调用失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "115 上游接口或浏览器调用失败"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "浏览器未启动或不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "浏览器未启动或不可用"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "pc",
+            "in": "query",
+            "required": false,
+            "description": "视频文件的 pick code（目录或搜索结果的 items[].pc）",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9]{1,64}$",
+              "description": "pc 和 cid 给一个；有 cid 时只列目录里的视频"
+            },
+            "example": "abc123"
+          },
+          {
+            "name": "cid",
+            "in": "query",
+            "required": false,
+            "description": "改为列出这个目录里的视频，大的在前",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{1,32}$"
+            }
+          }
+        ]
+      }
+    },
     "/115dl.py": {
       "get": {
         "summary": "独立 CLI 源码；Python 3.8+ 标准库，无 pip 依赖",
