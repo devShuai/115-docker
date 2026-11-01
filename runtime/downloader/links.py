@@ -5,7 +5,7 @@ The item formats mirror 115's own web code: the drive dialog
 """
 from datetime import datetime, timedelta, timezone
 import re
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit
 
 MAX_LINKS = 100
 CHINA = timezone(timedelta(hours=8))
@@ -15,6 +15,56 @@ _SHARE_URL = re.compile(r"https?://(?:[\w-]+\.)?(?:115|115cdn|anxia)\.com/s/([A-
                         re.IGNORECASE)
 _RECEIVE_TEXT = re.compile(r"(?:访问码|提取码|密码|password)[:：=\s]*([A-Za-z0-9]{4})", re.IGNORECASE)
 _RECEIVE_CODE = re.compile(r"[A-Za-z0-9]{4}")
+_SECOND_LINK = re.compile(r"\s+(?:https?://|ftp://|magnet:\?|ed2k://)", re.IGNORECASE)
+
+
+def _quote_keep(text: str, safe: str) -> str:
+    """Percent-encode spaces and special characters, leaving an existing %XX sequence as itself."""
+    return quote(unquote(text), safe=safe)
+
+
+def _escape_http(url: str) -> str:
+    parts = urlsplit(url)
+    if not parts.netloc:
+        return url
+    return urlunsplit((parts.scheme, parts.netloc, _quote_keep(parts.path, "/"),
+                       _quote_keep(parts.query, "=&+"), _quote_keep(parts.fragment, "")))
+
+
+def _escape_ed2k(url: str) -> str:
+    prefix, _, body = url.partition("://")
+    parts = body.split("|")
+    # ed2k://|file|name|size|hash|...
+    if len(parts) >= 4 and parts[1].lower() == "file":
+        parts[2] = _quote_keep(parts[2], "")
+    return prefix + "://" + "|".join(parts)
+
+
+def _quote_magnet(text: str, safe: str, encoding=None, errors=None) -> str:
+    return quote(text, safe=":/?&=+")
+
+
+def _escape_magnet(url: str) -> str:
+    head, sep, query = url.partition("?")
+    if not sep:
+        return url
+    pairs = parse_qsl(query, keep_blank_values=True)
+    return head + "?" + urlencode(pairs, quote_via=_quote_magnet, safe=":/?&=+")
+
+
+def escape_offline_link(line: str) -> str:
+    """Encode spaces and special characters the way 115 offline download requires.
+
+    The scheme separators stay. A link that is already percent-encoded is not encoded again.
+    """
+    lower = line.lower()
+    if lower.startswith("ed2k://"):
+        return _escape_ed2k(line)
+    if lower.startswith("magnet:?"):
+        return _escape_magnet(line)
+    if lower.startswith(("http://", "https://", "ftp://")):
+        return _escape_http(line)
+    return line
 
 
 def offline_links(text):
@@ -24,6 +74,9 @@ def offline_links(text):
         line = line.strip()
         if not line:
             continue
+        if _SECOND_LINK.search(line):
+            raise ValueError("无法识别的链接（每行一个磁力、ed2k、HTTP 或 FTP 链接）：" + line[:80])
+        line = escape_offline_link(line)
         if not _OFFLINE.fullmatch(line):
             raise ValueError("无法识别的链接（每行一个磁力、ed2k、HTTP 或 FTP 链接）：" + line[:80])
         if line not in links:

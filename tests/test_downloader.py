@@ -14,6 +14,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 from urllib.error import URLError
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "runtime/downloader"))
@@ -44,6 +45,17 @@ class LinkTests(unittest.TestCase):
                 links.offline_links(text)
         with self.assertRaisesRegex(ValueError, "最多"):
             links.offline_links("\n".join(f"https://example.com/{n}" for n in range(101)))
+
+    def test_offline_links_escape_spaces_and_special_characters(self):
+        http = "https://example.com/dir/my file (1).mkv?x=a b"
+        ed2k = f"ed2k://|file|影片 名称(1).mkv|123|{'C' * 32}|/"
+        magnet = "magnet:?xt=urn:btih:" + "d" * 40 + "&dn=My Movie&tr=http://tracker.example/announce"
+        self.assertEqual(links.offline_links("\n".join((http, ed2k, magnet, "https://example.com/a%20b.mkv"))), [
+            "https://example.com/dir/my%20file%20%281%29.mkv?x=a%20b",
+            f"ed2k://|file|{quote('影片 名称(1).mkv')}|123|{'C' * 32}|/",
+            "magnet:?xt=urn:btih:" + "d" * 40 + "&dn=My%20Movie&tr=http://tracker.example/announce",
+            "https://example.com/a%20b.mkv",
+        ])
 
     def test_drive_path(self):
         self.assertEqual(links.drive_path(" /电影//2024\\合集/ "), ["电影", "2024", "合集"])
